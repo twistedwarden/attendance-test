@@ -94,7 +94,7 @@ export default function Sidebar({ activeSection, onSectionChange, isMobileOpen =
         transform transition-transform duration-300 ease-in-out
         ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
-        <div className="p-6">
+        <div className="p-6 pb-24">
           {/* Mobile Close Button */}
           <div className="flex items-center justify-between mb-8 md:hidden">
             <div className="flex items-center space-x-3">
