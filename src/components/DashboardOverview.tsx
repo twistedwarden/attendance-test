@@ -11,7 +11,7 @@ export default function DashboardOverview() {
           title="Total Students"
           value="346"
           icon={Users}
-          trend={{ value: "Grades 1-10", isPositive: true }}
+          trend={{ value: "Grades 1-7", isPositive: true }}
           color="blue"
         />
         <StatsCard

@@ -13,43 +13,67 @@ interface ActivityItem {
 const mockActivities: ActivityItem[] = [
   {
     id: '1',
-    user: 'Sarah Johnson',
-    action: 'Entry Access',
+    user: 'Emma Johnson (Grade 1)',
+    action: 'Fingerprint Scan - Entry',
     time: '2 minutes ago',
     status: 'success',
-    location: 'Main Building'
+    location: 'Main Entrance'
   },
   {
     id: '2',
-    user: 'Michael Chen',
-    action: 'Exit Access',
+    user: 'Michael Chen (Grade 2)',
+    action: 'Fingerprint Scan - Entry',
     time: '5 minutes ago',
     status: 'success',
-    location: 'Library'
+    location: 'Main Entrance'
   },
   {
     id: '3',
     user: 'Unknown User',
-    action: 'Access Denied',
+    action: 'Fingerprint Scan Failed',
     time: '8 minutes ago',
     status: 'failed',
-    location: 'Admin Office'
+    location: 'Main Entrance'
   },
   {
     id: '4',
-    user: 'Emma Davis',
-    action: 'Entry Access',
+    user: 'Sarah Davis (Grade 3)',
+    action: 'Fingerprint Scan - Late Entry',
     time: '12 minutes ago',
     status: 'success',
-    location: 'Gymnasium'
+    location: 'Main Entrance'
   },
   {
     id: '5',
-    user: 'System Check',
-    action: 'Device Status',
+    user: 'Alex Rodriguez (Grade 4)',
+    action: 'Fingerprint Scan - Entry',
     time: '15 minutes ago',
-    status: 'pending',
-    location: 'All Locations'
+    status: 'success',
+    location: 'Main Entrance'
+  },
+  {
+    id: '6',
+    user: 'Olivia Thompson (Grade 5)',
+    action: 'Fingerprint Scan - Entry',
+    time: '18 minutes ago',
+    status: 'success',
+    location: 'Main Entrance'
+  },
+  {
+    id: '7',
+    user: 'James Wilson (Grade 6)',
+    action: 'Fingerprint Scan - Entry',
+    time: '20 minutes ago',
+    status: 'success',
+    location: 'Main Entrance'
+  },
+  {
+    id: '8',
+    user: 'Sophia Brown (Grade 7)',
+    action: 'Fingerprint Scan - Entry',
+    time: '22 minutes ago',
+    status: 'success',
+    location: 'Main Entrance'
   }
 ];
 

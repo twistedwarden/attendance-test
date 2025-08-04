@@ -15,7 +15,7 @@ const mockStudents: Student[] = [
   {
     id: '1',
     name: 'Emma Johnson',
-    grade: 'Grade 8',
+    grade: 'Grade 1',
     fingerprintId: 'FP001',
     parentContact: '+1 (555) 123-4567',
     lastScan: '8:15 AM',
@@ -24,7 +24,7 @@ const mockStudents: Student[] = [
   {
     id: '2',
     name: 'Michael Chen',
-    grade: 'Grade 5',
+    grade: 'Grade 2',
     fingerprintId: 'FP002',
     parentContact: '+1 (555) 234-5678',
     lastScan: '8:12 AM',
@@ -33,7 +33,7 @@ const mockStudents: Student[] = [
   {
     id: '3',
     name: 'Sarah Davis',
-    grade: 'Grade 10',
+    grade: 'Grade 3',
     fingerprintId: 'FP003',
     parentContact: '+1 (555) 345-6789',
     lastScan: '8:35 AM',
@@ -42,7 +42,7 @@ const mockStudents: Student[] = [
   {
     id: '4',
     name: 'Alex Rodriguez',
-    grade: 'Grade 3',
+    grade: 'Grade 4',
     fingerprintId: 'FP004',
     parentContact: '+1 (555) 456-7890',
     lastScan: '8:08 AM',
@@ -50,10 +50,37 @@ const mockStudents: Student[] = [
   },
   {
     id: '5',
-    name: 'New Student',
-    grade: 'Grade 6',
-    fingerprintId: 'Pending',
+    name: 'Olivia Thompson',
+    grade: 'Grade 5',
+    fingerprintId: 'FP005',
     parentContact: '+1 (555) 567-8901',
+    lastScan: '8:05 AM',
+    status: 'enrolled'
+  },
+  {
+    id: '6',
+    name: 'James Wilson',
+    grade: 'Grade 6',
+    fingerprintId: 'FP006',
+    parentContact: '+1 (555) 678-9012',
+    lastScan: '8:20 AM',
+    status: 'enrolled'
+  },
+  {
+    id: '7',
+    name: 'Sophia Brown',
+    grade: 'Grade 7',
+    fingerprintId: 'FP007',
+    parentContact: '+1 (555) 789-0123',
+    lastScan: '8:18 AM',
+    status: 'enrolled'
+  },
+  {
+    id: '8',
+    name: 'New Student',
+    grade: 'Grade 1',
+    fingerprintId: 'Pending',
+    parentContact: '+1 (555) 890-1234',
     lastScan: 'Never',
     status: 'pending'
   }
@@ -107,9 +134,6 @@ export default function StudentsSection() {
             <option>Grade 5</option>
             <option>Grade 6</option>
             <option>Grade 7</option>
-            <option>Grade 8</option>
-            <option>Grade 9</option>
-            <option>Grade 10</option>
           </select>
           <select className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
             <option>All Status</option>

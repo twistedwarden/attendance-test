@@ -16,7 +16,7 @@ const mockNotifications: Notification[] = [
   {
     id: '1',
     studentName: 'Emma Johnson',
-    grade: 'Grade 8',
+    grade: 'Grade 1',
     parentContact: '+1 (555) 123-4567',
     message: 'Emma has arrived at school at 8:15 AM',
     status: 'sent',
@@ -26,7 +26,7 @@ const mockNotifications: Notification[] = [
   {
     id: '2',
     studentName: 'Michael Chen',
-    grade: 'Grade 5',
+    grade: 'Grade 2',
     parentContact: '+1 (555) 234-5678',
     message: 'Michael has arrived at school at 8:12 AM',
     status: 'sent',
@@ -36,7 +36,7 @@ const mockNotifications: Notification[] = [
   {
     id: '3',
     studentName: 'Sarah Davis',
-    grade: 'Grade 10',
+    grade: 'Grade 3',
     parentContact: '+1 (555) 345-6789',
     message: 'Sarah arrived late at 8:35 AM',
     status: 'sent',
@@ -46,7 +46,7 @@ const mockNotifications: Notification[] = [
   {
     id: '4',
     studentName: 'Alex Rodriguez',
-    grade: 'Grade 3',
+    grade: 'Grade 4',
     parentContact: '+1 (555) 456-7890',
     message: 'Alex has arrived at school at 8:08 AM',
     status: 'pending',
@@ -56,11 +56,31 @@ const mockNotifications: Notification[] = [
   {
     id: '5',
     studentName: 'Olivia Thompson',
-    grade: 'Grade 7',
+    grade: 'Grade 5',
     parentContact: '+1 (555) 567-8901',
     message: 'Failed to send arrival notification',
     status: 'failed',
     timestamp: '8:05 AM',
+    type: 'arrival'
+  },
+  {
+    id: '6',
+    studentName: 'James Wilson',
+    grade: 'Grade 6',
+    parentContact: '+1 (555) 678-9012',
+    message: 'James has arrived at school at 8:20 AM',
+    status: 'sent',
+    timestamp: '8:20 AM',
+    type: 'arrival'
+  },
+  {
+    id: '7',
+    studentName: 'Sophia Brown',
+    grade: 'Grade 7',
+    parentContact: '+1 (555) 789-0123',
+    message: 'Sophia has arrived at school at 8:18 AM',
+    status: 'sent',
+    timestamp: '8:18 AM',
     type: 'arrival'
   }
 ];

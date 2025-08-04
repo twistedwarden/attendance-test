@@ -17,10 +17,7 @@ const gradeData: GradeData[] = [
   { grade: 'Grade 4', totalStudents: 35, present: 33, late: 1, absent: 1, attendanceRate: 97.1 },
   { grade: 'Grade 5', totalStudents: 31, present: 29, late: 2, absent: 0, attendanceRate: 100 },
   { grade: 'Grade 6', totalStudents: 33, present: 31, late: 1, absent: 1, attendanceRate: 97.0 },
-  { grade: 'Grade 7', totalStudents: 36, present: 34, late: 2, absent: 0, attendanceRate: 100 },
-  { grade: 'Grade 8', totalStudents: 38, present: 35, late: 2, absent: 1, attendanceRate: 97.4 },
-  { grade: 'Grade 9', totalStudents: 34, present: 32, late: 1, absent: 1, attendanceRate: 97.1 },
-  { grade: 'Grade 10', totalStudents: 30, present: 28, late: 1, absent: 1, attendanceRate: 96.7 }
+  { grade: 'Grade 7', totalStudents: 36, present: 34, late: 2, absent: 0, attendanceRate: 100 }
 ];
 
 export default function GradeOverview() {

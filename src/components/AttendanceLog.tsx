@@ -14,7 +14,7 @@ const mockAttendance: AttendanceRecord[] = [
   {
     id: '1',
     studentName: 'Emma Johnson',
-    grade: 'Grade 8',
+    grade: 'Grade 1',
     time: '8:15 AM',
     status: 'present',
     parentNotified: true
@@ -22,7 +22,7 @@ const mockAttendance: AttendanceRecord[] = [
   {
     id: '2',
     studentName: 'Michael Chen',
-    grade: 'Grade 5',
+    grade: 'Grade 2',
     time: '8:12 AM',
     status: 'present',
     parentNotified: true
@@ -38,7 +38,7 @@ const mockAttendance: AttendanceRecord[] = [
   {
     id: '4',
     studentName: 'Sarah Davis',
-    grade: 'Grade 10',
+    grade: 'Grade 3',
     time: '8:35 AM',
     status: 'late',
     parentNotified: true
@@ -46,7 +46,7 @@ const mockAttendance: AttendanceRecord[] = [
   {
     id: '5',
     studentName: 'Alex Rodriguez',
-    grade: 'Grade 3',
+    grade: 'Grade 4',
     time: '8:08 AM',
     status: 'present',
     parentNotified: true
@@ -54,8 +54,24 @@ const mockAttendance: AttendanceRecord[] = [
   {
     id: '6',
     studentName: 'Olivia Thompson',
-    grade: 'Grade 7',
+    grade: 'Grade 5',
     time: '8:05 AM',
+    status: 'present',
+    parentNotified: true
+  },
+  {
+    id: '7',
+    studentName: 'James Wilson',
+    grade: 'Grade 6',
+    time: '8:20 AM',
+    status: 'present',
+    parentNotified: true
+  },
+  {
+    id: '8',
+    studentName: 'Sophia Brown',
+    grade: 'Grade 7',
+    time: '8:18 AM',
     status: 'present',
     parentNotified: true
   }
