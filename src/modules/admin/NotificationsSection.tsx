@@ -217,4 +217,4 @@ export default function NotificationsSection() {
       </div>
     </div>
   );
-}
+} 

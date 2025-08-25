@@ -98,117 +98,64 @@ export default function SettingsSection() {
           </div>
 
           <div className="mt-6 pt-6 border-t border-gray-200">
-            <h4 className="font-medium text-gray-900 mb-4">Message Templates</h4>
-            <div className="space-y-4">
+            <div className="flex items-center justify-between">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Arrival Message</label>
-                <textarea
-                  rows={3}
-                  defaultValue="Your child [STUDENT_NAME] has arrived at school at [TIME]."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+                <h4 className="font-medium text-gray-900">Notification Time</h4>
+                <p className="text-sm text-gray-600">When to send notifications</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Late Arrival Message</label>
-                <textarea
-                  rows={3}
-                  defaultValue="Your child [STUDENT_NAME] arrived late at school at [TIME]."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Device Settings */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center space-x-3 mb-6">
-            <Shield className="h-5 w-5 text-purple-600" />
-            <h3 className="text-lg font-semibold text-gray-900">Device Configuration</h3>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Scanner Sensitivity</label>
-              <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                <option>High</option>
-                <option>Medium</option>
-                <option>Low</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Scan Timeout (seconds)</label>
-              <input
-                type="number"
-                defaultValue="10"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Max Retry Attempts</label>
-              <input
-                type="number"
-                defaultValue="3"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">LED Feedback</label>
-              <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                <option>Enabled</option>
-                <option>Disabled</option>
+              <select className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option>Immediately</option>
+                <option>5 minutes delay</option>
+                <option>15 minutes delay</option>
+                <option>30 minutes delay</option>
               </select>
             </div>
           </div>
         </div>
 
-        {/* System Information */}
+        {/* Security Settings */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center space-x-3 mb-6">
-            <Wifi className="h-5 w-5 text-orange-600" />
-            <h3 className="text-lg font-semibold text-gray-900">System Information</h3>
+            <Shield className="h-5 w-5 text-red-600" />
+            <h3 className="text-lg font-semibold text-gray-900">Security Settings</h3>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-gray-600">System Version:</span>
-                <span className="font-medium">v1.2.3</span>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-medium text-gray-900">Two-Factor Authentication</h4>
+                <p className="text-sm text-gray-600">Require 2FA for admin access</p>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Arduino Model:</span>
-                <span className="font-medium">Uno R3</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Sensor Model:</span>
-                <span className="font-medium">AS608</span>
-              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" className="sr-only peer" />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
             </div>
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Last Update:</span>
-                <span className="font-medium">2024-01-15</span>
+            
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-medium text-gray-900">Session Timeout</h4>
+                <p className="text-sm text-gray-600">Auto-logout after inactivity</p>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Uptime:</span>
-                <span className="font-medium">7 days, 14 hours</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Database Size:</span>
-                <span className="font-medium">2.3 MB</span>
-              </div>
+              <select className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option>15 minutes</option>
+                <option>30 minutes</option>
+                <option>1 hour</option>
+                <option>4 hours</option>
+                <option>Never</option>
+              </select>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg flex items-center space-x-2 transition-colors">
-          <Save className="h-4 w-4" />
-          <span>Save Settings</span>
-        </button>
+        {/* Save Button */}
+        <div className="flex justify-end">
+          <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 transition-colors">
+            <Save className="h-5 w-5" />
+            <span>Save Settings</span>
+          </button>
+        </div>
       </div>
     </div>
   );
-}
+} 
