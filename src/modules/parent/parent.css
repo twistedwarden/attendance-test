@@ -1,0 +1,50 @@
+/* Parent Portal Styles */
+
+/* Custom styles for react-day-picker */
+.rdp-custom {
+  --rdp-cell-size: 40px;
+  --rdp-accent-color: #3b82f6;
+  --rdp-background-color: #e5e7eb;
+  --rdp-accent-color-dark: #1d4ed8;
+  --rdp-background-color-dark: #374151;
+  --rdp-outline: 2px solid var(--rdp-accent-color);
+  --rdp-outline-selected: 2px solid rgba(0, 0, 0, 0.75);
+  margin: 1em;
+}
+
+.rdp-custom .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: var(--rdp-background-color);
+}
+
+.rdp-custom .rdp-day_selected,
+.rdp-custom .rdp-day_selected:focus-visible,
+.rdp-custom .rdp-day_selected:hover {
+  background-color: var(--rdp-accent-color);
+  color: white;
+}
+
+/* Scrollbar utilities */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Parent portal specific styles */
+.parent-portal {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .rdp-custom {
+    --rdp-cell-size: 35px;
+  }
+} 

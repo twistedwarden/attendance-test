@@ -30,6 +30,12 @@ export const mockUsers: User[] = [
     email: 'emily.davis@foothills.edu',
     section: 'A',
     gradeLevel: 'Grade 3'
+  },
+  {
+    id: '5',
+    name: 'Sarah Johnson',
+    role: 'parent',
+    email: 'sarah.johnson@email.com',
   }
 ];
 
@@ -38,5 +44,6 @@ export const mockPasswords: Record<string, string> = {
   'admin@foothills.edu': 'admin123',
   'sarah.johnson@foothills.edu': 'teacher123',
   'michael.chen@foothills.edu': 'teacher123',
-  'emily.davis@foothills.edu': 'teacher123'
+  'emily.davis@foothills.edu': 'teacher123',
+  'sarah.johnson@email.com': 'parent123'
 }; 

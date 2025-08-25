@@ -1,7 +1,7 @@
 export interface User {
   id: string;
   name: string;
-  role: 'admin' | 'teacher';
+  role: 'admin' | 'teacher' | 'parent';
   email: string;
   section?: string;
   gradeLevel?: string;
