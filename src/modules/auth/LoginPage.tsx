@@ -20,8 +20,8 @@ export default function LoginPage() {
     }
   };
 
-  const handleDemoLogin = (userType: 'admin' | 'teacher') => {
-    const demoUser = userType === 'admin' ? mockUsers[0] : mockUsers[1];
+  const handleDemoLogin = (userType: 'admin' | 'teacher' | 'parent') => {
+    const demoUser = userType === 'admin' ? mockUsers[0] : userType === 'teacher' ? mockUsers[1] : userType === 'parent' ? mockUsers[4] : mockUsers[0];
     setEmail(demoUser.email);
     setPassword(mockPasswords[demoUser.email] || '');
   };
@@ -115,6 +115,12 @@ export default function LoginPage() {
                 className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg text-sm transition-colors"
               >
                 Login as Teacher
+              </button>
+              <button
+                onClick={() => handleDemoLogin('parent')}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg text-sm transition-colors"
+              >
+                Login as Parent
               </button>
             </div>
           </div>
