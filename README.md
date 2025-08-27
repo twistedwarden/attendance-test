@@ -1,166 +1,228 @@
-# Attendance System v2
+# Attendance Management System
 
-A modular React TypeScript application for managing student attendance at Foothills Christian School.
+A comprehensive attendance management system with role-based access control for schools, featuring a modern React frontend and a secure Node.js backend.
 
-## Project Structure
+## 🚀 Features
 
-The project is organized into modular components with clear separation of concerns:
+### Frontend (React + TypeScript)
+- **Modern UI**: Built with React 18, TypeScript, and Tailwind CSS
+- **Role-based Access**: Separate dashboards for Admin, Teacher, and Parent
+- **Responsive Design**: Works seamlessly on desktop and mobile devices
+- **Real-time Updates**: Live attendance tracking and notifications
+- **Beautiful Components**: Modern UI with shadcn/ui components
+
+### Backend (Node.js + Express)
+- **JWT Authentication**: Secure token-based authentication
+- **Role-based Authorization**: Admin, Teacher, and Parent permissions
+- **Password Security**: bcrypt hashing with salt rounds
+- **API Security**: CORS, rate limiting, and security headers
+- **Input Validation**: Comprehensive request validation
+- **Error Handling**: Proper error responses and logging
+
+## 🏗️ Architecture
 
 ```
-src/
-├── modules/
-│   ├── auth/           # Authentication module
-│   │   ├── AuthContext.tsx    # React context for auth state
-│   │   ├── AuthService.ts     # Authentication service
-│   │   ├── LoginPage.tsx      # Login page component
-│   │   ├── mockData.ts        # Mock user data
-│   │   └── index.ts           # Module exports
-│   │
-│   ├── admin/          # Admin module
-│   │   ├── AdminDashboard.tsx     # Main admin dashboard
-│   │   ├── AdminSidebar.tsx       # Admin navigation
-│   │   ├── AdminHeader.tsx        # Admin header
-│   │   ├── DashboardOverview.tsx  # Dashboard overview
-│   │   ├── AttendanceLog.tsx      # Attendance management
-│   │   ├── StudentsSection.tsx    # Student management
-│   │   ├── GradeOverview.tsx      # Grade management
-│   │   ├── NotificationsSection.tsx # Notifications
-│   │   ├── ReportsSection.tsx     # Reports
-│   │   ├── DeviceStatus.tsx       # Device monitoring
-│   │   ├── SettingsSection.tsx    # Settings
-│   │   └── index.ts               # Module exports
-│   │
-│   ├── teacher/        # Teacher module
-│   │   ├── TeacherDashboard.tsx       # Main teacher dashboard
-│   │   ├── TeacherSidebar.tsx         # Teacher navigation
-│   │   ├── TeacherHeader.tsx          # Teacher header
-│   │   ├── TeacherAttendanceView.tsx # Attendance view
-│   │   ├── TeacherStudentsView.tsx   # Student view
-│   │   ├── TeacherReportsView.tsx    # Reports view
-│   │   ├── TeacherNotificationsView.tsx # Notifications view
-│   │   └── index.ts                   # Module exports
-│   │
-│   └── shared/         # Shared components
-│       ├── StatsCard.tsx              # Reusable stats card
-│       └── index.ts                   # Module exports
-├── types/              # TypeScript type definitions
-│   └── index.ts
-├── App.tsx             # Main application component
-└── main.tsx            # Application entry point
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   React Frontend│    │  Node.js Backend│    │  In-Memory DB   │
+│   (Port 5173)   │◄──►│   (Port 5000)   │◄──►│   (Development) │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## Features
+## 🛠️ Tech Stack
+
+### Frontend
+- **React 18** with TypeScript
+- **Vite** for fast development
+- **Tailwind CSS** for styling
+- **React Router** for navigation
+- **shadcn/ui** for components
+- **React Hook Form** for forms
+- **Zod** for validation
+
+### Backend
+- **Node.js** with Express
+- **JWT** for authentication
+- **bcryptjs** for password hashing
+- **express-validator** for validation
+- **Helmet** for security headers
+- **CORS** for cross-origin requests
+- **Rate Limiting** for API protection
+
+## 📦 Quick Start
+
+### Prerequisites
+- Node.js (v16 or higher)
+- npm or yarn
+
+### 1. Clone and Setup
+```bash
+git clone <repository-url>
+cd attendancev2
+```
+
+### 2. Frontend Setup
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
+### 3. Backend Setup
+```bash
+# Navigate to backend directory
+cd backend
+
+# Install dependencies
+npm install
+
+# Create environment file
+cp env.example .env
+
+# Start development server
+npm run dev
+```
+
+### 4. Access the Application
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:5000
+- **Health Check**: http://localhost:5000/health
+
+## 🔐 Default Users
+
+| Email | Password | Role | Name |
+|-------|----------|------|------|
+| admin@foothills.edu | admin123 | Admin | Admin User |
+| sarah.johnson@foothills.edu | teacher123 | Teacher | Mrs. Sarah Johnson |
+| michael.chen@foothills.edu | teacher123 | Teacher | Mr. Michael Chen |
+| emily.davis@foothills.edu | teacher123 | Teacher | Ms. Emily Davis |
+| sarah.johnson@email.com | parent123 | Parent | Sarah Johnson |
+
+## 📋 User Roles & Permissions
+
+### 👨‍💼 Admin
+- Manage all users (create, read, update, delete)
+- View system-wide attendance reports
+- Access to all features and data
+- System configuration and settings
+
+### 👩‍🏫 Teacher
+- View and manage attendance for assigned classes
+- Generate attendance reports for their sections
+- Update student attendance records
+- Access to teacher-specific dashboard
+
+### 👨‍👩‍👧‍👦 Parent
+- View attendance records for their children
+- Receive attendance notifications
+- Access to parent-specific dashboard
+- View attendance history and trends
+
+## 🔌 API Endpoints
 
 ### Authentication
-- Mock authentication system with demo accounts
-- Role-based access control (Admin/Teacher)
-- Persistent session management
-- Secure login/logout functionality
+- `POST /api/auth/login` - User login
+- `POST /api/auth/register` - Register new user (Admin only)
+- `GET /api/auth/profile` - Get user profile
+- `PUT /api/auth/profile` - Update user profile
+- `PUT /api/auth/change-password` - Change password
+- `POST /api/auth/logout` - Logout
+- `GET /api/auth/verify` - Verify token
 
-### Admin Dashboard
-- **Dashboard Overview**: School statistics and quick actions
-- **Attendance Management**: Comprehensive attendance tracking and logs
-- **Student Management**: Student registration, fingerprint management, and status tracking
-- **Grade Management**: Grade-level analysis and performance metrics
-- **Notifications**: Parent communication management with delivery status
-- **Reports & Analytics**: Custom report generation (PDF, CSV, Excel)
-- **Device Status**: Real-time monitoring of attendance scanners
-- **System Settings**: School schedule, notification preferences, and security settings
+### User Management (Admin only)
+- `GET /api/users` - Get all users
+- `GET /api/users/:id` - Get user by ID
+- `PUT /api/users/:id` - Update user
+- `DELETE /api/users/:id` - Delete user
+- `GET /api/users/role/:role` - Get users by role
 
-### Teacher Dashboard
-- **Attendance View**: Class-specific attendance management with filtering
-- **Student Management**: Class roster and individual student tracking
-- **Reports**: Class-specific attendance reports and analytics
-- **Notifications**: Communication with parents and administrators
+## 🎨 UI Components
 
-### Shared Components
-- **StatsCard**: Reusable statistics display component
-- **Responsive Design**: Mobile-first approach with collapsible navigation
+The system includes modern, accessible UI components:
 
-## Demo Accounts
+- **Cards**: Information display and organization
+- **Buttons**: Primary, secondary, and ghost variants
+- **Forms**: Validated input fields with error handling
+- **Tables**: Sortable and filterable data tables
+- **Modals**: Confirmation dialogs and forms
+- **Navigation**: Sidebar and header navigation
+- **Charts**: Attendance visualization and analytics
 
-### Admin Account
-- Email: `admin@foothills.edu`
-- Password: `admin123`
+## 🔒 Security Features
 
-### Teacher Accounts
-- Email: `sarah.johnson@foothills.edu` (Grade 1, Section A)
-- Password: `teacher123`
-- Email: `michael.chen@foothills.edu` (Grade 2, Section B)
-- Password: `teacher123`
-- Email: `emily.davis@foothills.edu` (Grade 3, Section A)
-- Password: `teacher123`
+- **JWT Authentication**: Secure token-based sessions
+- **Password Hashing**: bcrypt with salt rounds
+- **CORS Protection**: Configurable cross-origin requests
+- **Rate Limiting**: Prevents API abuse
+- **Input Validation**: Server-side request validation
+- **Security Headers**: Helmet.js protection
+- **Role-based Access**: Granular permission control
 
-## Getting Started
+## 📱 Responsive Design
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
+The application is fully responsive and works on:
+- Desktop computers
+- Tablets
+- Mobile phones
+- Different screen sizes and orientations
 
-2. Start the development server:
-   ```bash
-   npm run dev
-   ```
+## 🚀 Deployment
 
-3. Open your browser and navigate to the application
-4. Use one of the demo accounts to log in
+### Frontend
+```bash
+npm run build
+# Serve the dist folder with nginx or similar
+```
 
-## Technology Stack
+### Backend
+```bash
+cd backend
+npm start
+# Use PM2 or similar for production
+```
 
-- **Frontend**: React 18 + TypeScript
-- **Styling**: Tailwind CSS
-- **Icons**: Lucide React
-- **Build Tool**: Vite
-- **State Management**: React Context API
-
-## Development
+## 🔧 Development
 
 ### Adding New Features
-1. Create components in the appropriate module directory
-2. Export them from the module's `index.ts` file
-3. Import and use them in the relevant dashboard
+1. **Backend**: Add routes in `backend/routes/`
+2. **Frontend**: Add components in `src/modules/`
+3. **Testing**: Test API endpoints and UI components
+4. **Documentation**: Update README and API docs
 
-### Authentication Flow
-1. User visits the application
-2. If not authenticated, shows login page
-3. After successful login, redirects to appropriate dashboard based on role
-4. Admin users see the full admin interface
-5. Teacher users see the teacher-specific interface
+### Database
+Currently uses in-memory storage for development. For production:
+1. Choose a database (PostgreSQL, MongoDB, etc.)
+2. Update `backend/config/database.js`
+3. Add proper database models and connections
 
-### Component Migration Status
-✅ **Completed**: All components have been migrated from `src/components/` to their respective modules
-✅ **Admin Module**: 11 components fully functional
-✅ **Teacher Module**: 7 components fully functional  
-✅ **Shared Module**: 1 reusable component
-✅ **TypeScript**: All imports resolved and compilation successful
+## 📚 Documentation
 
-### Mock Data
-The application currently uses mock data for demonstration purposes. In a production environment, this would be replaced with:
-- Real API endpoints
-- Database integration
-- JWT token authentication
-- Secure password hashing
+- [Frontend Setup](./README.md)
+- [Backend Setup](./backend/README.md)
+- [API Documentation](./backend/README.md#api-endpoints)
+- [Deployment Guide](./SETUP.md)
 
-## Future Enhancements
+## 🤝 Contributing
 
-- [ ] Real API integration
-- [ ] Database setup
-- [ ] User management system
-- [ ] Advanced reporting
-- [ ] Mobile responsiveness improvements
-- [ ] Real-time notifications
-- [ ] Data export functionality
-- [ ] Advanced search and filtering
-- [ ] Student photo management
-- [ ] Bulk operations for admin
-- [ ] Attendance history tracking
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
-## Contributing
+## 📄 License
 
-1. Follow the modular structure
-2. Use TypeScript for type safety
-3. Follow the existing component patterns
-4. Add proper error handling
-5. Include responsive design considerations
-6. Place components in appropriate modules (admin/teacher/shared) 
+MIT License - see LICENSE file for details.
+
+## 🆘 Support
+
+For issues or questions:
+1. Check the documentation
+2. Review the logs
+3. Test API endpoints independently
+4. Create an issue with detailed information
+
+---
+
+**Built with ❤️ for modern education management** 

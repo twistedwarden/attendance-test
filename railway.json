@@ -1,0 +1,11 @@
+{
+  "build": {
+    "services": {
+      "attendance-monolith": {
+        "rootDirectory": "backend",
+        "buildCommand": "npm ci && cd .. && npm ci && npm run build && cd backend",
+        "startCommand": "node server.js"
+      }
+    }
+  }
+} 

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { GraduationCap, User, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import { mockUsers, mockPasswords } from './mockData';
 
 export default function LoginPage() {
   const { login, isLoading } = useAuth();
@@ -14,16 +13,38 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
 
-    const user = await login(email, password);
-    if (!user) {
-      setError('Invalid email or password');
+    try {
+      const user = await login(email, password);
+      if (!user) {
+        setError('Invalid email or password');
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Login failed. Please try again.');
     }
   };
 
-  const handleDemoLogin = (userType: 'admin' | 'teacher' | 'parent') => {
-    const demoUser = userType === 'admin' ? mockUsers[0] : userType === 'teacher' ? mockUsers[1] : userType === 'parent' ? mockUsers[4] : mockUsers[0];
-    setEmail(demoUser.email);
-    setPassword(mockPasswords[demoUser.email] || '');
+  const handleDemoLogin = async (userType: 'admin' | 'teacher' | 'parent') => {
+    setError('');
+    
+    // Demo credentials from backend
+    const demoCredentials = {
+      admin: { email: 'admin@foothills.edu', password: 'admin123' },
+      teacher: { email: 'sarah.johnson@foothills.edu', password: 'teacher123' },
+      parent: { email: 'sarah.johnson@email.com', password: 'parent123' }
+    };
+
+    const credentials = demoCredentials[userType];
+    setEmail(credentials.email);
+    setPassword(credentials.password);
+
+    try {
+      const user = await login(credentials.email, credentials.password);
+      if (!user) {
+        setError('Demo login failed. Please try again.');
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Demo login failed. Please try again.');
+    }
   };
 
   return (
@@ -106,19 +127,22 @@ export default function LoginPage() {
             <div className="space-y-2">
               <button
                 onClick={() => handleDemoLogin('admin')}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg text-sm transition-colors"
+                disabled={isLoading}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Login as Admin
               </button>
               <button
                 onClick={() => handleDemoLogin('teacher')}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg text-sm transition-colors"
+                disabled={isLoading}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Login as Teacher
               </button>
               <button
                 onClick={() => handleDemoLogin('parent')}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg text-sm transition-colors"
+                disabled={isLoading}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Login as Parent
               </button>
