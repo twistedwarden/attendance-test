@@ -345,8 +345,9 @@ export const getAttendanceLog = async ({ limit = 50, offset = 0, date = null } =
       sql += ' WHERE al.Date = ?';
       params.push(date);
     }
-    sql += ' ORDER BY al.Date DESC, COALESCE(al.TimeIn, al.TimeOut) DESC LIMIT ? OFFSET ?';
-    params.push(Number(limit), Number(offset));
+    const limitInt = Number.isFinite(Number(limit)) ? Math.max(0, Number(limit)) : 50;
+    const offsetInt = Number.isFinite(Number(offset)) ? Math.max(0, Number(offset)) : 0;
+    sql += ` ORDER BY al.Date DESC, COALESCE(al.TimeIn, al.TimeOut) DESC LIMIT ${limitInt} OFFSET ${offsetInt}`;
     const [rows] = await pool.execute(sql, params);
     return rows;
   } catch (error) {
