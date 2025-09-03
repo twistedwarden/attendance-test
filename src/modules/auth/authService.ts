@@ -1,6 +1,6 @@
 import { User, LoginFormData } from '../../types';
 
-const API_BASE_URL = 'https://attendance-test-production.up.railway.app/api';
+const API_BASE_URL = 'http://localhost:5000/api';
 
 export class AuthService {
   static async login(credentials: LoginFormData): Promise<User | null> {
@@ -156,6 +156,64 @@ export class AuthService {
       return data.success;
     } catch (error) {
       console.error('Password change error:', error);
+      throw error;
+    }
+  }
+
+  // New method to get user's students (for parents)
+  static async getUserStudents(): Promise<any[]> {
+    try {
+      const token = this.getStoredToken();
+      if (!token) {
+        throw new Error('No authentication token');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/users/students`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch students');
+      }
+
+      return data.success ? data.data : [];
+    } catch (error) {
+      console.error('Get students error:', error);
+      throw error;
+    }
+  }
+
+  // New method to get user's notifications
+  static async getNotifications(): Promise<any[]> {
+    try {
+      const token = this.getStoredToken();
+      if (!token) {
+        throw new Error('No authentication token');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/users/notifications`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch notifications');
+      }
+
+      return data.success ? data.data : [];
+    } catch (error) {
+      console.error('Get notifications error:', error);
       throw error;
     }
   }

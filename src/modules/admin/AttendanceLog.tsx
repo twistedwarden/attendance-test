@@ -1,83 +1,61 @@
 // import React from 'react';
 import { Clock, CheckCircle, XCircle, User, MessageSquare } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AdminService } from './api/adminService';
 
-interface AttendanceRecord {
-  id: string;
-  studentName: string;
-  grade: string;
-  time: string;
-  status: 'present' | 'failed' | 'late';
-  parentNotified: boolean;
+interface AttendanceRow {
+  AttendanceID: number;
+  StudentID: number;
+  Date: string;
+  TimeIn?: string | null;
+  TimeOut?: string | null;
+  Status: 'Present' | 'Absent' | 'Late' | 'Excused' | string;
+  FullName?: string;
+  GradeLevel?: string | null;
+  Section?: string | null;
 }
 
-const mockAttendance: AttendanceRecord[] = [
-  {
-    id: '1',
-    studentName: 'Emma Johnson',
-    grade: 'Grade 1',
-    time: '8:15 AM',
-    status: 'present',
-    parentNotified: true
-  },
-  {
-    id: '2',
-    studentName: 'Michael Chen',
-    grade: 'Grade 2',
-    time: '8:12 AM',
-    status: 'present',
-    parentNotified: true
-  },
-  {
-    id: '3',
-    studentName: 'Unknown Student',
-    grade: 'N/A',
-    time: '8:10 AM',
-    status: 'failed',
-    parentNotified: false
-  },
-  {
-    id: '4',
-    studentName: 'Sarah Davis',
-    grade: 'Grade 3',
-    time: '8:35 AM',
-    status: 'late',
-    parentNotified: true
-  },
-  {
-    id: '5',
-    studentName: 'Alex Rodriguez',
-    grade: 'Grade 4',
-    time: '8:08 AM',
-    status: 'present',
-    parentNotified: true
-  },
-  {
-    id: '6',
-    studentName: 'Olivia Thompson',
-    grade: 'Grade 5',
-    time: '8:05 AM',
-    status: 'present',
-    parentNotified: true
-  },
-  {
-    id: '7',
-    studentName: 'James Wilson',
-    grade: 'Grade 6',
-    time: '8:20 AM',
-    status: 'present',
-    parentNotified: true
-  },
-  {
-    id: '8',
-    studentName: 'Sophia Brown',
-    grade: 'Grade 7',
-    time: '8:18 AM',
-    status: 'present',
-    parentNotified: true
-  }
-];
-
 export default function AttendanceLog() {
+  const [items, setItems] = useState<AttendanceRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await AdminService.listAttendanceLog(50, 0);
+      setItems(data);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load attendance log');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const formatted = useMemo(() => {
+    return (items || []).map((r) => {
+      const timeRaw = r.TimeIn || r.TimeOut || '';
+      const time = timeRaw ? timeRaw.toString().slice(0,5) : '';
+      const statusLower = (r.Status || '').toLowerCase();
+      let status: 'present' | 'failed' | 'late' = 'present';
+      if (statusLower.includes('late')) status = 'late';
+      else if (statusLower.includes('absent') || statusLower.includes('fail')) status = 'failed';
+      return {
+        id: String(r.AttendanceID),
+        studentName: r.FullName || `Student #${r.StudentID}`,
+        grade: [r.GradeLevel, r.Section].filter(Boolean).join(' ').trim() || 'N/A',
+        time: time,
+        status,
+        parentNotified: false
+      };
+    });
+  }, [items]);
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'present':
@@ -122,16 +100,20 @@ export default function AttendanceLog() {
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-gray-900">Today's Attendance Log</h3>
         <div className="flex items-center space-x-2">
-          <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">
-            Export Report
+          <button className="text-sm text-blue-600 hover:text-blue-700 font-medium" onClick={load} disabled={loading}>
+            {loading ? 'Refreshing...' : 'Refresh'}
           </button>
           <span className="text-sm text-gray-500">•</span>
-          <span className="text-sm text-gray-500">Last updated: just now</span>
+          <span className="text-sm text-gray-500">{loading ? 'Loading…' : 'Last updated: just now'}</span>
         </div>
       </div>
-      
+
+      {error && (
+        <div className="mb-3 p-3 rounded border border-red-200 bg-red-50 text-red-700 text-sm">{error}</div>
+      )}
+
       <div className="space-y-3">
-        {mockAttendance.map((record) => (
+        {formatted.map((record) => (
           <div
             key={record.id}
             className={`p-4 rounded-lg border ${getStatusBg(record.status)} transition-colors hover:shadow-sm`}
@@ -158,6 +140,9 @@ export default function AttendanceLog() {
             </div>
           </div>
         ))}
+        {!loading && formatted.length === 0 && !error && (
+          <div className="text-sm text-gray-500">No attendance logs found.</div>
+        )}
       </div>
     </div>
   );

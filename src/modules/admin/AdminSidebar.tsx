@@ -1,4 +1,4 @@
-import { Home, Users, BookOpen, Bell, BarChart3, Settings, Smartphone, Calendar, Fingerprint, X } from 'lucide-react';
+import { Home, Users, BookOpen, Bell, BarChart3, Settings, Smartphone, Calendar, Fingerprint, X, Shield, FileText, UserCheck } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
 interface AdminSidebarProps {
@@ -20,9 +20,12 @@ export default function AdminSidebar({
     { id: 'dashboard', label: 'Dashboard', icon: Home, description: 'Overview & Stats' },
     { id: 'attendance', label: 'Attendance', icon: Calendar, description: 'Manage Records' },
     { id: 'students', label: 'Students', icon: Users, description: 'Student Management' },
+    { id: 'users', label: 'User Accounts', icon: Shield, description: 'Manage Users' },
+    { id: 'registrations', label: 'Registrations', icon: UserCheck, description: 'Review Applications' },
     { id: 'grades', label: 'Grades', icon: BookOpen, description: 'Grade Management' },
     { id: 'notifications', label: 'Notifications', icon: Bell, description: 'System Alerts' },
     { id: 'reports', label: 'Reports', icon: BarChart3, description: 'Analytics & Data' },
+    { id: 'audit', label: 'Audit Trail', icon: FileText, description: 'Security Logs' },
     { id: 'device', label: 'Device Status', icon: Smartphone, description: 'Hardware Monitor' },
     { id: 'settings', label: 'Settings', icon: Settings, description: 'System Config' },
   ];

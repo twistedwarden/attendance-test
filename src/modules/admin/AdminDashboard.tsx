@@ -11,6 +11,9 @@ import NotificationsSection from './NotificationsSection';
 import ReportsSection from './ReportsSection';
 import DeviceStatus from './DeviceStatus';
 import SettingsSection from './SettingsSection';
+import UserAccountManagement from './UserAccountManagement';
+import RegistrationManagement from './RegistrationManagement';
+import AuditTrailSection from './AuditTrailSection';
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -33,12 +36,18 @@ export default function AdminDashboard() {
         return <AttendanceLog />;
       case 'students':
         return <StudentsSection />;
+      case 'users':
+        return <UserAccountManagement />;
+      case 'registrations':
+        return <RegistrationManagement />;
       case 'grades':
         return <GradeOverview />;
       case 'notifications':
         return <NotificationsSection />;
       case 'reports':
         return <ReportsSection />;
+      case 'audit':
+        return <AuditTrailSection />;
       case 'device':
         return <DeviceStatus />;
       case 'settings':
