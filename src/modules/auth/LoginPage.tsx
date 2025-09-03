@@ -121,7 +121,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Demo Login Buttons */}
+          {/* Demo Login Buttons
           <div className="mt-6 pt-6 border-t border-gray-200">
             <p className="text-sm text-gray-600 text-center mb-4">Demo Accounts:</p>
             <div className="space-y-2">
@@ -147,7 +147,7 @@ export default function LoginPage() {
                 Login as Parent
               </button>
             </div>
-          </div>
+          </div> */}
         </div>
 
         {/* Footer */}
