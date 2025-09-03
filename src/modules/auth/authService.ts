@@ -217,4 +217,35 @@ export class AuthService {
       throw error;
     }
   }
+
+  static async startOtpLogin(credentials: LoginFormData): Promise<{ userId: number } | null> {
+    const response = await fetch(`${API_BASE_URL}/auth/login-with-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentials),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to request OTP');
+    }
+    return data.success ? data.data : null;
+  }
+
+  static async verifyOtp(userId: number, otp: string): Promise<User | null> {
+    const response = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, otp }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || 'OTP verification failed');
+    }
+    if (data.success && data.data) {
+      localStorage.setItem('auth_token', data.data.token);
+      localStorage.setItem('user_data', JSON.stringify(data.data.user));
+      return data.data.user as User;
+    }
+    return null;
+  }
 } 

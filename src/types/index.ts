@@ -12,6 +12,8 @@ export interface AuthContextType {
   login: (email: string, password: string) => Promise<User | null>;
   logout: () => void;
   isLoading: boolean;
+  startOtpLogin?: (email: string, password: string) => Promise<number | null>;
+  verifyOtp?: (userId: number, otp: string) => Promise<User | null>;
 }
 
 export interface LoginFormData {

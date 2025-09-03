@@ -70,11 +70,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const startOtpLogin = async (email: string, password: string): Promise<number | null> => {
+    setIsLoading(true);
+    try {
+      const res = await AuthService.startOtpLogin({ email, password });
+      return res ? res.userId : null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const verifyOtp = async (userId: number, otp: string): Promise<User | null> => {
+    setIsLoading(true);
+    try {
+      const userData = await AuthService.verifyOtp(userId, otp);
+      if (userData) {
+        setUser(userData);
+        return userData;
+      }
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const value: AuthContextType = {
     user,
     login,
     logout,
-    isLoading
+    isLoading,
+    startOtpLogin,
+    verifyOtp,
   };
 
   return (

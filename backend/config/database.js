@@ -26,10 +26,30 @@ const initializeDatabase = async () => {
     console.log('✅ Database connected successfully');
     connection.release();
 
+    // Ensure OTP storage table exists
+    await ensureOtpStorage();
+
     // Initialize with default users if table is empty
     await initializeDefaultUsers();
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
+    throw error;
+  }
+};
+
+const ensureOtpStorage = async () => {
+  try {
+    await pool.execute(
+      `CREATE TABLE IF NOT EXISTS userotp (
+        UserID INT NOT NULL,
+        OtpCode VARCHAR(10) NOT NULL,
+        OtpExpiresAt DATETIME NOT NULL,
+        PRIMARY KEY (UserID),
+        CONSTRAINT fk_userotp_user FOREIGN KEY (UserID) REFERENCES useraccount(UserID) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`
+    );
+  } catch (error) {
+    console.error('❌ Error ensuring OTP storage table:', error.message);
     throw error;
   }
 };
@@ -560,6 +580,42 @@ export const updateParentContactByParentId = async (parentId, contactInfo) => {
     return result.affectedRows > 0;
   } catch (error) {
     console.error('Error updating parent contact:', error);
+    throw error;
+  }
+};
+
+export const setUserOtp = async (userId, otp, expiresAt) => {
+  try {
+    await pool.execute(
+      'REPLACE INTO userotp (UserID, OtpCode, OtpExpiresAt) VALUES (?, ?, ?)',
+      [userId, String(otp), expiresAt]
+    );
+    return true;
+  } catch (error) {
+    console.error('Error setting user OTP:', error);
+    throw error;
+  }
+};
+
+export const consumeUserOtp = async (userId, otp) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT OtpCode, OtpExpiresAt FROM userotp WHERE UserID = ? LIMIT 1',
+      [userId]
+    );
+    const row = rows[0];
+    if (!row) return { valid: false };
+    const now = new Date();
+    const expires = row.OtpExpiresAt ? new Date(row.OtpExpiresAt) : null;
+    const matches = String(row.OtpCode) === String(otp);
+    const notExpired = !!expires && expires.getTime() > now.getTime();
+    if (matches && notExpired) {
+      await pool.execute('DELETE FROM userotp WHERE UserID = ?', [userId]);
+      return { valid: true };
+    }
+    return { valid: false };
+  } catch (error) {
+    console.error('Error consuming user OTP:', error);
     throw error;
   }
 };

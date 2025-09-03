@@ -5,65 +5,98 @@ import {
   findUserByEmail, 
   createUser, 
   updateUser,
-  findUserById 
+  findUserById,
+  setUserOtp,
+  consumeUserOtp
 } from '../config/database.js';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
 import { validateLogin, validateRegistration, validateUserUpdate } from '../middleware/validation.js';
+import nodemailer from 'nodemailer';
 
 const router = express.Router();
 
-// Login route
-router.post('/login', validateLogin, async (req, res) => {
+// Login route (step 1: verify password and send OTP)
+router.post('/login-with-otp', validateLogin, async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    // Find user by email (Username in database)
     const user = await findUserByEmail(email);
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    // Check password
     const isValidPassword = await bcrypt.compare(password, user.PasswordHash);
     if (!isValidPassword) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    // Generate JWT token
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresInMin = Number(process.env.OTP_EXP_MINUTES || 10);
+    const expiresAt = new Date(Date.now() + expiresInMin * 60 * 1000);
+
+    await setUserOtp(user.UserID, otp, expiresAt);
+
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: String(process.env.SMTP_SECURE || 'false') === 'true',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
+    const fromName = process.env.SMTP_FROM_NAME || 'Attendance System';
+
+    await transporter.sendMail({
+      from: `${fromName} <${fromEmail}>`,
+      to: email,
+      subject: 'Your OTP Code',
+      html: `<p>Your OTP code is: <b>${otp}</b></p><p>This code will expire in ${expiresInMin} minutes.</p>`,
+    });
+
+    res.json({ success: true, message: 'OTP sent to email', data: { userId: user.UserID } });
+  } catch (error) {
+    console.error('Login-with-OTP error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Verify OTP (step 2: issue JWT)
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { userId, otp } = req.body;
+    if (!userId || !otp) {
+      return res.status(400).json({ success: false, message: 'userId and otp are required' });
+    }
+
+    const user = await findUserById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const result = await consumeUserOtp(userId, otp);
+    if (!result.valid) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
+    }
+
     const token = jwt.sign(
       { userId: user.UserID, email: user.Username, role: user.Role },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
 
-    // Format user data for response
     const userResponse = {
       id: user.UserID,
-      name: user.Username.split('@')[0], // Extract name from email
+      name: user.Username.split('@')[0],
       role: user.Role.toLowerCase(),
-      email: user.Username
+      email: user.Username,
     };
 
-    res.json({
-      success: true,
-      message: 'Login successful',
-      data: {
-        user: userResponse,
-        token
-      }
-    });
+    res.json({ success: true, message: 'Login successful', data: { user: userResponse, token } });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error'
-    });
+    console.error('Verify OTP error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
