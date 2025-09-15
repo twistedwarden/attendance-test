@@ -4,25 +4,26 @@ import {
   Home, 
   User, 
   Calendar, 
-  Menu, 
   X,
   ChevronDown,
   Users,
-  Fingerprint
+  Fingerprint,
+  UserPlus
 } from 'lucide-react';
-import { Button } from './ui/button';
-import { Student } from '../data/enhancedMockData';
+import { Student, Parent } from '../api/parentService';
 
 interface SidebarProps {
-  selectedDaughter: Student;
-  onDaughterChange: (daughter: Student) => void;
-  daughters: Student[];
+  selectedStudent: Student | null;
+  onStudentChange: (student: Student) => void;
+  students: Student[];
+  parent: Parent | null;
   isMobileOpen?: boolean;
   onMobileClose?: () => void;
+  onEnrollNewStudent?: () => void;
 }
 
-const Sidebar = ({ selectedDaughter, onDaughterChange, daughters, isMobileOpen = false, onMobileClose }: SidebarProps) => {
-  const [isDaughterDropdownOpen, setIsDaughterDropdownOpen] = useState(false);
+const Sidebar = ({ selectedStudent, onStudentChange, students, parent, isMobileOpen = false, onMobileClose, onEnrollNewStudent }: SidebarProps) => {
+  const [isStudentDropdownOpen, setIsStudentDropdownOpen] = useState(false);
 
   const navigationItems = [
     {
@@ -89,48 +90,65 @@ const Sidebar = ({ selectedDaughter, onDaughterChange, daughters, isMobileOpen =
               </div>
             </div>
 
-            {/* Daughter Selection */}
+            {/* Student Selection */}
             <div className="mb-6">
               <div className="relative">
                 <button
-                  onClick={() => setIsDaughterDropdownOpen(!isDaughterDropdownOpen)}
+                  onClick={() => setIsStudentDropdownOpen(!isStudentDropdownOpen)}
                   className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                   <div className="flex items-center space-x-2">
                     <Users size={16} className="text-gray-600" />
                     <div className="text-left">
                       <p className="text-sm font-medium text-gray-800">
-                        {selectedDaughter ? selectedDaughter.fullName : 'Select Daughter'}
+                        {selectedStudent ? selectedStudent.fullName : 'Select Student'}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {selectedDaughter ? `Grade ${selectedDaughter.gradeLevel} - Section ${selectedDaughter.section}` : 'Choose student'}
+                        {selectedStudent ? `Grade ${selectedStudent.gradeLevel} - Section ${selectedStudent.section}` : 'Choose student'}
                       </p>
                     </div>
                   </div>
                   <ChevronDown 
                     size={16} 
-                    className={`text-gray-600 transition-transform ${isDaughterDropdownOpen ? 'rotate-180' : ''}`} 
+                    className={`text-gray-600 transition-transform ${isStudentDropdownOpen ? 'rotate-180' : ''}`} 
                   />
                 </button>
 
                 {/* Dropdown */}
-                {isDaughterDropdownOpen && (
+                {isStudentDropdownOpen && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
-                    {daughters.map((daughter) => (
+                    {students.map((student) => (
                       <button
-                        key={daughter.studentId}
+                        key={student.studentId}
                         onClick={() => {
-                          onDaughterChange(daughter);
-                          setIsDaughterDropdownOpen(false);
+                          onStudentChange(student);
+                          setIsStudentDropdownOpen(false);
                         }}
                         className={`w-full p-3 text-left hover:bg-gray-50 transition-colors border-b last:border-b-0 ${
-                          selectedDaughter?.studentId === daughter.studentId ? 'bg-purple-50 text-purple-700' : ''
+                          selectedStudent?.studentId === student.studentId ? 'bg-purple-50 text-purple-700' : ''
                         }`}
                       >
-                        <p className="font-medium">{daughter.fullName}</p>
-                        <p className="text-sm text-gray-500">Grade {daughter.gradeLevel} - Section {daughter.section}</p>
+                        <p className="font-medium">{student.fullName}</p>
+                        <p className="text-sm text-gray-500">Grade {student.gradeLevel} - Section {student.section}</p>
                       </button>
                     ))}
+                    
+                    {/* Enroll New Student Button */}
+                    {onEnrollNewStudent && (
+                      <button
+                        onClick={() => {
+                          onEnrollNewStudent();
+                          setIsStudentDropdownOpen(false);
+                        }}
+                        className="w-full p-3 text-left hover:bg-blue-50 transition-colors border-t border-gray-200 bg-blue-50/50"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <UserPlus size={16} className="text-blue-600" />
+                          <span className="font-medium text-blue-700">Enroll New Student</span>
+                        </div>
+                        <p className="text-sm text-blue-600 mt-1">Add another child</p>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -160,6 +178,21 @@ const Sidebar = ({ selectedDaughter, onDaughterChange, daughters, isMobileOpen =
                   </div>
                 </NavLink>
               ))}
+              
+              {/* Enroll New Student Button - Always Visible */}
+              <button
+                onClick={() => {
+                  onEnrollNewStudent?.();
+                  onMobileClose?.();
+                }}
+                className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+              >
+                <UserPlus className="h-5 w-5 text-blue-600" />
+                <div>
+                  <p className="font-medium">Enroll New Student</p>
+                  <p className="text-xs opacity-75">Add another child</p>
+                </div>
+              </button>
             </nav>
           </div>
 
@@ -195,51 +228,51 @@ const Sidebar = ({ selectedDaughter, onDaughterChange, daughters, isMobileOpen =
           {/* Parent Info */}
           <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
             <div className="text-sm">
-              <p className="font-medium text-gray-900">Sarah Johnson</p>
+              <p className="font-medium text-gray-900">{parent?.fullName || 'Loading...'}</p>
               <p className="text-purple-600">Parent</p>
             </div>
           </div>
 
-          {/* Daughter Selection */}
+          {/* Student Selection */}
           <div className="mb-6">
             <div className="relative">
               <button
-                onClick={() => setIsDaughterDropdownOpen(!isDaughterDropdownOpen)}
+                onClick={() => setIsStudentDropdownOpen(!isStudentDropdownOpen)}
                 className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center space-x-2">
                   <Users size={16} className="text-gray-600" />
                   <div className="text-left">
                     <p className="text-sm font-medium text-gray-800">
-                      {selectedDaughter ? selectedDaughter.fullName : 'Select Daughter'}
+                      {selectedStudent ? selectedStudent.fullName : 'Select Student'}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {selectedDaughter ? `Grade ${selectedDaughter.gradeLevel} - Section ${selectedDaughter.section}` : 'Choose student'}
+                      {selectedStudent ? `Grade ${selectedStudent.gradeLevel} - Section ${selectedStudent.section}` : 'Choose student'}
                     </p>
                   </div>
                 </div>
                 <ChevronDown 
                   size={16} 
-                  className={`text-gray-600 transition-transform ${isDaughterDropdownOpen ? 'rotate-180' : ''}`} 
+                  className={`text-gray-600 transition-transform ${isStudentDropdownOpen ? 'rotate-180' : ''}`} 
                 />
               </button>
 
               {/* Dropdown */}
-              {isDaughterDropdownOpen && (
+              {isStudentDropdownOpen && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
-                  {daughters.map((daughter) => (
+                  {students.map((student) => (
                     <button
-                      key={daughter.studentId}
+                      key={student.studentId}
                       onClick={() => {
-                        onDaughterChange(daughter);
-                        setIsDaughterDropdownOpen(false);
+                        onStudentChange(student);
+                        setIsStudentDropdownOpen(false);
                       }}
                       className={`w-full p-3 text-left hover:bg-gray-50 transition-colors border-b last:border-b-0 ${
-                        selectedDaughter?.studentId === daughter.studentId ? 'bg-purple-50 text-purple-700' : ''
+                        selectedStudent?.studentId === student.studentId ? 'bg-purple-50 text-purple-700' : ''
                       }`}
                     >
-                      <p className="font-medium">{daughter.fullName}</p>
-                      <p className="text-sm text-gray-500">Grade {daughter.gradeLevel} - Section {daughter.section}</p>
+                      <p className="font-medium">{student.fullName}</p>
+                      <p className="text-sm text-gray-500">Grade {student.gradeLevel} - Section {student.section}</p>
                     </button>
                   ))}
                 </div>
@@ -270,6 +303,20 @@ const Sidebar = ({ selectedDaughter, onDaughterChange, daughters, isMobileOpen =
                 </div>
               </NavLink>
             ))}
+            
+            {/* Enroll New Student Button - Desktop */}
+            <button
+              onClick={() => {
+                onEnrollNewStudent?.();
+              }}
+              className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+            >
+              <UserPlus className="h-5 w-5 text-blue-600" />
+              <div>
+                <p className="font-medium">Enroll New Student</p>
+                <p className="text-xs opacity-75">Add another child</p>
+              </div>
+            </button>
           </nav>
         </div>
 

@@ -1,4 +1,4 @@
-// Enhanced mock data for testing the Parent Portal UI with multiple daughters
+// Enhanced mock data for testing the Parent Portal UI with multiple students
 
 export interface Parent {
   parentId: number;
@@ -15,6 +15,7 @@ export interface Student {
   gradeLevel: string;
   section: string;
   parentId: number;
+  enrollmentStatus?: 'pending' | 'rejected' | 'approved';
 }
 
 export interface AttendanceRecord {
@@ -23,7 +24,7 @@ export interface AttendanceRecord {
   date: string;
   timeIn: string | null;
   timeOut: string | null;
-  status: 'Present' | 'Absent' | 'Late' | 'Excused';
+  status: 'Present' | 'Late' | 'Excused';
 }
 
 export interface AttendanceStats {
@@ -40,27 +41,38 @@ export const mockParent: Parent = {
   relationship: "Mother"
 };
 
-export const mockDaughters: Student[] = [
+export const mockStudents: Student[] = [
   {
     studentId: 1,
     fullName: "Emma Johnson",
     gradeLevel: "10",
     section: "A",
-    parentId: 1
+    parentId: 1,
+    enrollmentStatus: "approved"
   },
   {
     studentId: 2,
     fullName: "Sophia Johnson",
     gradeLevel: "8",
     section: "B",
-    parentId: 1
+    parentId: 1,
+    enrollmentStatus: "approved"
   },
   {
     studentId: 3,
     fullName: "Olivia Johnson",
     gradeLevel: "12",
     section: "A",
-    parentId: 1
+    parentId: 1,
+    enrollmentStatus: "approved"
+  },
+  {
+    studentId: 4,
+    fullName: "Juan Dela Cruz",
+    gradeLevel: "6",
+    section: "A",
+    parentId: 1,
+    enrollmentStatus: "pending"
   }
 ];
 
@@ -104,7 +116,7 @@ export const mockAttendanceData: Record<number, AttendanceRecord[]> = {
       date: "2025-08-21",
       timeIn: null,
       timeOut: null,
-      status: "Absent"
+      status: "Late"
     },
     {
       attendanceId: 6,

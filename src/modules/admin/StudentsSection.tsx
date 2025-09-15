@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, UserPlus, Edit, Trash2, Fingerprint, Eye } from 'lucide-react';
+import { Search, UserPlus, Edit, Trash2, Fingerprint, Eye, Archive, RotateCcw, Calendar } from 'lucide-react';
 import { AdminService } from './api/adminService';
 import Modal from './components/Modal';
 import ConfirmModal from './components/ConfirmModal';
+import SuggestionInput from './components/SuggestionInput';
 import { toast } from 'sonner';
 
 interface StudentVM {
@@ -10,9 +11,14 @@ interface StudentVM {
   name: string;
   gradeLevel: string | null;
   section: string | null;
+  sectionId?: number;
+  sectionName?: string;
+  sectionDescription?: string;
+  sectionCapacity?: number;
   parentContact: string;
   parentName?: string;
   hasFingerprint?: boolean;
+  status?: 'Active' | 'Archived';
 }
 
 export default function StudentsSection() {
@@ -23,11 +29,17 @@ export default function StudentsSection() {
   const [gradeFilter, setGradeFilter] = useState('All Grades');
   const [sectionFilter, setSectionFilter] = useState('All Sections');
   const [fingerFilter, setFingerFilter] = useState<'all'|'available'|'missing'>('all');
+  const [statusFilter, setStatusFilter] = useState('active');
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [viewing, setViewing] = useState<StudentVM | null>(null);
+  const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
+  const [selectedStudentForAttendance, setSelectedStudentForAttendance] = useState<StudentVM | null>(null);
+  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
+  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [formName, setFormName] = useState('');
   const [formGrade, setFormGrade] = useState('');
   const [formSection, setFormSection] = useState('');
@@ -41,6 +53,19 @@ export default function StudentsSection() {
   const [newParentEmail, setNewParentEmail] = useState('');
   const [newParentPassword, setNewParentPassword] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  
+  // Suggestions state
+  const [availableSections, setAvailableSections] = useState<string[]>([]);
+  const [availableGrades, setAvailableGrades] = useState<string[]>([]);
+  
+  // Archiving states
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [confirmationText, setConfirmationText] = useState('');
+  const [actionType, setActionType] = useState<'archive' | 'delete' | 'restore'>('archive');
+  const [selectedStudent, setSelectedStudent] = useState<StudentVM | null>(null);
+  const [formSubmitting, setFormSubmitting] = useState(false);
 
   const load = async () => {
     try {
@@ -53,9 +78,14 @@ export default function StudentsSection() {
           name: r.name ?? r.FullName,
           gradeLevel: r.gradeLevel ?? r.GradeLevel ?? null,
           section: r.section ?? r.Section ?? null,
+          sectionId: r.sectionId ?? r.SectionID ?? null,
+          sectionName: r.sectionName ?? r.SectionName ?? null,
+          sectionDescription: r.sectionDescription ?? r.SectionDescription ?? null,
+          sectionCapacity: r.sectionCapacity ?? r.SectionCapacity ?? null,
           parentContact: r.parentContact ?? r.ParentContact ?? '',
           parentName: r.parentName ?? r.ParentName ?? '',
-          hasFingerprint: r.hasFingerprint ?? false
+          hasFingerprint: r.hasFingerprint ?? false,
+          status: r.status ?? r.Status ?? 'Active'
         }))
       );
     } catch (e: any) {
@@ -65,17 +95,36 @@ export default function StudentsSection() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  const loadSuggestions = async () => {
+    try {
+      // Load sections
+      const sections = await AdminService.listSections();
+      const sectionNames = [...new Set(sections.map(section => section.sectionName).filter(Boolean))];
+      setAvailableSections(sectionNames);
+      
+      // Load grades (extract unique grades from sections)
+      const grades = [...new Set(sections.map(section => section.gradeLevel).filter(Boolean))];
+      setAvailableGrades(grades);
+    } catch (e: any) {
+      console.error('Failed to load suggestions:', e);
+    }
+  };
+
+  useEffect(() => { 
+    load(); 
+    loadSuggestions();
+  }, []);
 
   const filtered = useMemo(() => {
     return students.filter(s => {
       const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase());
       const matchesGrade = gradeFilter === 'All Grades' || s.gradeLevel === gradeFilter;
-      const matchesSection = sectionFilter === 'All Sections' || s.section === sectionFilter;
+      const matchesSection = sectionFilter === 'All Sections' || (s.sectionName || s.section) === sectionFilter;
       const matchesFinger = fingerFilter === 'all' || (fingerFilter === 'available' ? !!s.hasFingerprint : !s.hasFingerprint);
-      return matchesSearch && matchesGrade && matchesSection && matchesFinger;
+      const matchesStatus = statusFilter === 'all' || s.status?.toLowerCase() === statusFilter;
+      return matchesSearch && matchesGrade && matchesSection && matchesFinger && matchesStatus;
     });
-  }, [students, search, gradeFilter, sectionFilter, fingerFilter]);
+  }, [students, search, gradeFilter, sectionFilter, fingerFilter, statusFilter]);
 
   const gradeOptions = useMemo(() => {
     const set = new Set<string>();
@@ -85,7 +134,10 @@ export default function StudentsSection() {
 
   const sectionOptions = useMemo(() => {
     const set = new Set<string>();
-    students.forEach(s => { if (s.section) set.add(s.section); });
+    students.forEach(s => { 
+      const sectionName = s.sectionName || s.section;
+      if (sectionName) set.add(sectionName); 
+    });
     return ['All Sections', ...Array.from(set).sort()];
   }, [students]);
 
@@ -132,6 +184,32 @@ export default function StudentsSection() {
     setEditOpen(true);
   };
 
+  const openAttendanceModal = async (student: StudentVM) => {
+    setSelectedStudentForAttendance(student);
+    setAttendanceModalOpen(true);
+    await loadAttendanceRecords(student.id, attendanceDate);
+  };
+
+  const loadAttendanceRecords = async (studentId: number, date: string) => {
+    try {
+      setAttendanceLoading(true);
+      const data = await AdminService.listSubjectAttendance(50, 0, undefined, date, studentId);
+      setAttendanceRecords(data);
+    } catch (error) {
+      console.error('Failed to load attendance records:', error);
+      toast.error('Failed to load attendance records');
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
+  const handleDateChange = async (newDate: string) => {
+    setAttendanceDate(newDate);
+    if (selectedStudentForAttendance) {
+      await loadAttendanceRecords(selectedStudentForAttendance.id, newDate);
+    }
+  };
+
   const submitEdit = async () => {
     if (!editing) return;
     try {
@@ -161,6 +239,103 @@ export default function StudentsSection() {
       toast.error(e?.message || 'Failed to delete student');
       console.error(e);
     }
+  };
+
+  // Archiving functions
+  const openArchive = (student: StudentVM) => {
+    setSelectedStudent(student);
+    setActionType('archive');
+    setConfirmationText('');
+    setIsArchiveOpen(true);
+  };
+
+  const openRestore = (student: StudentVM) => {
+    setSelectedStudent(student);
+    setActionType('restore');
+    setConfirmationText('');
+    setIsRestoreOpen(true);
+  };
+
+  const openDeleteModal = (student: StudentVM) => {
+    setSelectedStudent(student);
+    setActionType('delete');
+    setConfirmationText('');
+    setIsDeleteOpen(true);
+  };
+
+  const handleArchive = async () => {
+    if (!selectedStudent) return;
+    try {
+      setFormSubmitting(true);
+      setError(null);
+      await AdminService.setStudentStatus(selectedStudent.id, 'Archived');
+      closeAllModals();
+      toast.success('Student archived successfully');
+      load();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to archive student');
+      toast.error(e?.message || 'Failed to archive student');
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!selectedStudent) return;
+    try {
+      setFormSubmitting(true);
+      setError(null);
+      await AdminService.setStudentStatus(selectedStudent.id, 'Active');
+      closeAllModals();
+      toast.success('Student restored successfully');
+      load();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to restore student');
+      toast.error(e?.message || 'Failed to restore student');
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+
+  const handleDeleteStudent = async () => {
+    if (!selectedStudent) return;
+    try {
+      setFormSubmitting(true);
+      setError(null);
+      await AdminService.deleteStudent(selectedStudent.id);
+      closeAllModals();
+      toast.success('Student deleted successfully');
+      load();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to delete student');
+      toast.error(e?.message || 'Failed to delete student');
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+
+  const handleConfirmAction = async () => {
+    const expectedText = actionType === 'archive' ? 'Archive' : actionType === 'restore' ? 'Restore' : 'Delete';
+    if (confirmationText !== expectedText) {
+      setError(`Please type "${expectedText}" to confirm`);
+      return;
+    }
+    
+    if (actionType === 'archive') {
+      await handleArchive();
+    } else if (actionType === 'restore') {
+      await handleRestore();
+    } else {
+      await handleDeleteStudent();
+    }
+  };
+
+  const closeAllModals = () => {
+    setIsArchiveOpen(false);
+    setIsRestoreOpen(false);
+    setIsDeleteOpen(false);
+    setSelectedStudent(null);
+    setConfirmationText('');
   };
 
   return (
@@ -199,6 +374,11 @@ export default function StudentsSection() {
             <option value="available">Available</option>
             <option value="missing">Not Captured</option>
           </select>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+          </select>
         </div>
       </div>
 
@@ -215,6 +395,7 @@ export default function StudentsSection() {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student ID</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Section</th>
@@ -226,6 +407,7 @@ export default function StudentsSection() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filtered.map((student) => (
                     <tr key={student.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{student.id}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="bg-blue-100 p-2 rounded-full mr-3">
@@ -237,20 +419,36 @@ export default function StudentsSection() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{student.gradeLevel || '-'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{student.section || '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {student.sectionName || student.section || '-'}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{student.parentName || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{student.parentContact || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
-                          <button onClick={() => { setViewing(student); setViewOpen(true); }} className="text-gray-600 hover:text-gray-900">
+                          <button onClick={() => { setViewing(student); setViewOpen(true); }} className="text-gray-600 hover:text-gray-900" title="View Details">
                             <Eye className="h-4 w-4" />
                           </button>
-                          <button onClick={() => openEdit(student)} className="text-blue-600 hover:text-blue-900">
+                          <button onClick={() => openAttendanceModal(student)} className="text-green-600 hover:text-green-900" title="View Attendance">
+                            <Calendar className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => openEdit(student)} className="text-blue-600 hover:text-blue-900" title="Edit">
                             <Edit className="h-4 w-4" />
                           </button>
-                          <button onClick={() => confirmDelete(student.id)} className="text-red-600 hover:text-red-900">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          {student.status === 'Archived' ? (
+                            <>
+                              <button onClick={() => openRestore(student)} className="text-green-600 hover:text-green-700" title="Restore">
+                                <RotateCcw className="h-4 w-4" />
+                              </button>
+                              <button onClick={() => openDeleteModal(student)} className="text-red-600 hover:text-red-700" title="Delete">
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <button onClick={() => openArchive(student)} className="text-orange-600 hover:text-orange-700" title="Archive">
+                              <Archive className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -270,27 +468,41 @@ export default function StudentsSection() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="text-sm font-medium text-gray-900 truncate">{student.name}</div>
-                          <div className="text-xs text-gray-500 mt-1">{student.gradeLevel || '-'}</div>
+                          <div className="text-xs text-gray-500 mt-1">ID: {student.id} • {student.gradeLevel || '-'}</div>
                         </div>
                       </div>
                       <div className="flex items-center space-x-2 flex-shrink-0">
                         <div className="flex space-x-1">
-                          <button onClick={() => { setViewing(student); setViewOpen(true); }} className="text-gray-600 hover:text-gray-900 p-1">
+                          <button onClick={() => { setViewing(student); setViewOpen(true); }} className="text-gray-600 hover:text-gray-900 p-1" title="View Details">
                             <Eye className="h-4 w-4" />
                           </button>
-                          <button onClick={() => openEdit(student)} className="text-blue-600 hover:text-blue-900 p-1">
+                          <button onClick={() => openAttendanceModal(student)} className="text-green-600 hover:text-green-900 p-1" title="View Attendance">
+                            <Calendar className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => openEdit(student)} className="text-blue-600 hover:text-blue-900 p-1" title="Edit">
                             <Edit className="h-4 w-4" />
                           </button>
-                          <button onClick={() => confirmDelete(student.id)} className="text-red-600 hover:text-red-900 p-1">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          {student.status === 'Archived' ? (
+                            <>
+                              <button onClick={() => openRestore(student)} className="text-green-600 hover:text-green-700 p-1" title="Restore">
+                                <RotateCcw className="h-4 w-4" />
+                              </button>
+                              <button onClick={() => openDeleteModal(student)} className="text-red-600 hover:text-red-700 p-1" title="Delete">
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <button onClick={() => openArchive(student)} className="text-orange-600 hover:text-orange-700 p-1" title="Archive">
+                              <Archive className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
                       <div>
                         <span className="text-gray-500">Section:</span>
-                        <div className="font-medium text-gray-900">{student.section || '-'}</div>
+                        <div className="font-medium text-gray-900">{student.sectionName || student.section || '-'}</div>
                       </div>
                       <div>
                         <span className="text-gray-500">Parent:</span>
@@ -328,12 +540,22 @@ export default function StudentsSection() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Grade Level</label>
-              <input value={formGrade} onChange={(e) => setFormGrade(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <SuggestionInput
+                label="Grade Level"
+                value={formGrade}
+                onChange={setFormGrade}
+                suggestions={availableGrades}
+                placeholder="Enter grade level (e.g., 1, 2, 3)"
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
-              <input value={formSection} onChange={(e) => setFormSection(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <SuggestionInput
+                label="Section"
+                value={formSection}
+                onChange={setFormSection}
+                suggestions={availableSections}
+                placeholder="Enter section (e.g., A, B, C)"
+              />
             </div>
           </div>
           <div>
@@ -410,12 +632,22 @@ export default function StudentsSection() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Grade Level</label>
-              <input value={formGrade} onChange={(e) => setFormGrade(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <SuggestionInput
+                label="Grade Level"
+                value={formGrade}
+                onChange={setFormGrade}
+                suggestions={availableGrades}
+                placeholder="Enter grade level (e.g., 1, 2, 3)"
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
-              <input value={formSection} onChange={(e) => setFormSection(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <SuggestionInput
+                label="Section"
+                value={formSection}
+                onChange={setFormSection}
+                suggestions={availableSections}
+                placeholder="Enter section (e.g., A, B, C)"
+              />
             </div>
           </div>
           <div>
@@ -488,6 +720,10 @@ export default function StudentsSection() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
+                <div className="text-xs text-gray-500">Student ID</div>
+                <div className="text-sm font-medium text-gray-900">{viewing?.id}</div>
+              </div>
+              <div>
                 <div className="text-xs text-gray-500">Full Name</div>
                 <div className="text-sm font-medium text-gray-900">{viewing?.name}</div>
               </div>
@@ -497,7 +733,7 @@ export default function StudentsSection() {
               </div>
               <div>
                 <div className="text-xs text-gray-500">Section</div>
-                <div className="text-sm font-medium text-gray-900">{viewing?.section || '-'}</div>
+                <div className="text-sm font-medium text-gray-900">{viewing?.sectionName || viewing?.section || '-'}</div>
               </div>
               <div>
                 <div className="text-xs text-gray-500">Parent</div>
@@ -527,6 +763,211 @@ export default function StudentsSection() {
         onCancel={() => setConfirmDeleteId(null)}
         onConfirm={handleDelete}
       />
+
+      {/* Archive Modal */}
+      <Modal open={isArchiveOpen} title="Archive Student" onClose={closeAllModals} footer={(
+        <>
+          <button onClick={closeAllModals} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button 
+            disabled={formSubmitting || confirmationText !== 'Archive'} 
+            onClick={handleConfirmAction} 
+            className="px-4 py-2 rounded-lg bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50"
+          >
+            {formSubmitting ? 'Archiving...' : 'Archive'}
+          </button>
+        </>
+      )}>
+        <div className="space-y-4">
+          <p>Are you sure you want to archive student <span className="font-semibold">{selectedStudent?.name}</span>? This will move the student to archived status.</p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Type "Archive" to confirm:</label>
+            <input 
+              value={confirmationText} 
+              onChange={(e) => setConfirmationText(e.target.value)} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              placeholder="Archive"
+            />
+          </div>
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+              {error}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Restore Modal */}
+      <Modal open={isRestoreOpen} title="Restore Student" onClose={closeAllModals} footer={(
+        <>
+          <button onClick={closeAllModals} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button 
+            disabled={formSubmitting || confirmationText !== 'Restore'} 
+            onClick={handleConfirmAction} 
+            className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+          >
+            {formSubmitting ? 'Restoring...' : 'Restore'}
+          </button>
+        </>
+      )}>
+        <div className="space-y-4">
+          <p>Are you sure you want to restore student <span className="font-semibold">{selectedStudent?.name}</span>? This will change the student status back to active.</p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Type "Restore" to confirm:</label>
+            <input 
+              value={confirmationText} 
+              onChange={(e) => setConfirmationText(e.target.value)} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              placeholder="Restore"
+            />
+          </div>
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+              {error}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Delete Modal */}
+      <Modal open={isDeleteOpen} title="Delete Student" onClose={closeAllModals} footer={(
+        <>
+          <button onClick={closeAllModals} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button 
+            disabled={formSubmitting || confirmationText !== 'Delete'} 
+            onClick={handleConfirmAction} 
+            className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {formSubmitting ? 'Deleting...' : 'Delete'}
+          </button>
+        </>
+      )}>
+        <div className="space-y-4">
+          <p>Are you sure you want to delete student <span className="font-semibold">{selectedStudent?.name}</span>? This action cannot be undone.</p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Type "Delete" to confirm:</label>
+            <input 
+              value={confirmationText} 
+              onChange={(e) => setConfirmationText(e.target.value)} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              placeholder="Delete"
+            />
+          </div>
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+              {error}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Attendance Modal */}
+      <Modal
+        open={attendanceModalOpen}
+        title={`Attendance Records - ${selectedStudentForAttendance?.name || ''}`}
+        onClose={() => setAttendanceModalOpen(false)}
+        footer={(
+          <button 
+            onClick={() => setAttendanceModalOpen(false)} 
+            className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+          >
+            Close
+          </button>
+        )}
+      >
+        <div className="space-y-4">
+          {/* Date Picker */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Date:</label>
+            <input
+              type="date"
+              value={attendanceDate}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+
+          {/* Student Info */}
+          {selectedStudentForAttendance && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center space-x-2">
+                <Fingerprint className="h-4 w-4 text-blue-600" />
+                <span className="font-medium text-blue-800">{selectedStudentForAttendance.name}</span>
+              </div>
+              <div className="text-sm text-blue-600 mt-1">
+                Grade: {selectedStudentForAttendance.gradeLevel || 'Not specified'} | 
+                Section: {selectedStudentForAttendance.sectionName || selectedStudentForAttendance.section || 'Not specified'}
+              </div>
+            </div>
+          )}
+
+          {/* Loading State */}
+          {attendanceLoading && (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              <span className="ml-2 text-gray-600">Loading attendance records...</span>
+            </div>
+          )}
+
+          {/* Attendance Records */}
+          {!attendanceLoading && (
+            <div className="space-y-3">
+              <h3 className="text-lg font-medium text-gray-900">Subject Attendance Checklist</h3>
+              {attendanceRecords.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Calendar className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                  <p>No attendance records found for this date.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {attendanceRecords.map((record) => {
+                    const statusLower = (record.Status || '').toLowerCase();
+                    let status: 'present' | 'failed' | 'late' = 'present';
+                    if (statusLower.includes('late')) status = 'late';
+                    else if (statusLower.includes('absent') || statusLower.includes('fail')) status = 'failed';
+
+                    return (
+                      <div
+                        key={record.SubjectAttendanceID}
+                        className={`flex items-center justify-between p-3 rounded-lg border ${
+                          status === 'present' 
+                            ? 'bg-green-50 border-green-200' 
+                            : status === 'late' 
+                            ? 'bg-yellow-50 border-yellow-200' 
+                            : 'bg-red-50 border-red-200'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          {status === 'present' && <div className="w-3 h-3 bg-green-500 rounded-full"></div>}
+                          {status === 'late' && <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>}
+                          {status === 'failed' && <div className="w-3 h-3 bg-red-500 rounded-full"></div>}
+                          <div>
+                            <div className="font-medium text-gray-900">{record.SubjectName}</div>
+                            <div className="text-sm text-gray-500">
+                              {new Date(record.CreatedAt).toLocaleTimeString('en-US', { 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          status === 'present' 
+                            ? 'bg-green-100 text-green-800' 
+                            : status === 'late' 
+                            ? 'bg-yellow-100 text-yellow-800' 
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {status === 'present' ? 'Present' : status === 'late' ? 'Late Arrival' : 'Absent'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

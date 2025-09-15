@@ -1,36 +1,12 @@
 import { User, LoginFormData } from '../../types';
 
-const API_BASE_URL = 'https://attendance-test-oj4f.onrender.com/api';
+// const API_BASE_URL = 'https://attendance-test-oj4f.onrender.com/api';
+const API_BASE_URL = 'http://localhost:5000/api';
 
 export class AuthService {
   static async login(credentials: LoginFormData): Promise<User | null> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(credentials),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Login failed');
-      }
-
-      if (data.success && data.data) {
-        // Store token in localStorage
-        localStorage.setItem('auth_token', data.data.token);
-        localStorage.setItem('user_data', JSON.stringify(data.data.user));
-        return data.data.user;
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Login error:', error);
-      throw error;
-    }
+    // Direct login is disabled - OTP authentication is required
+    throw new Error('Direct login is disabled. Please use OTP authentication.');
   }
 
   static async validateToken(token: string): Promise<User | null> {
@@ -219,33 +195,83 @@ export class AuthService {
   }
 
   static async startOtpLogin(credentials: LoginFormData): Promise<{ userId: number } | null> {
-    const response = await fetch(`${API_BASE_URL}/auth/login-with-otp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(credentials),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to request OTP');
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/login-with-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials),
+      });
+      
+      const data = await response.json();
+      
+      // Gracefully handle invalid credentials or validation errors without throwing
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 400) {
+          return null; // caller will show a friendly message
+        }
+        throw new Error(data.message || 'Failed to request OTP');
+      }
+      return data.success ? data.data : null;
+    } catch (error) {
+      console.error('AuthService: startOtpLogin error:', error);
+      // Network or unexpected errors should bubble up
+      throw error;
     }
-    return data.success ? data.data : null;
   }
 
   static async verifyOtp(userId: number, otp: string): Promise<User | null> {
-    const response = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, otp }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'OTP verification failed');
+      }
+      if (data.success && data.data) {
+        localStorage.setItem('auth_token', data.data.token);
+        localStorage.setItem('user_data', JSON.stringify(data.data.user));
+        return data.data.user as User;
+      }
+      return null;
+    } catch (error) {
+      console.error('AuthService: verifyOtp error:', error);
+      throw error;
+    }
+  }
+
+  // Parent registration
+  static async startParentRegistration(payload: {
+    firstName: string;
+    middleName?: string;
+    lastName: string;
+    relationship: 'Father' | 'Mother' | 'Guardian';
+    contactNumber?: string;
+    email: string;
+    password: string;
+  }): Promise<boolean> {
+    const response = await fetch(`${API_BASE_URL}/auth/register-parent-start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, otp }),
+      body: JSON.stringify(payload),
     });
     const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.message || 'OTP verification failed');
-    }
-    if (data.success && data.data) {
-      localStorage.setItem('auth_token', data.data.token);
-      localStorage.setItem('user_data', JSON.stringify(data.data.user));
-      return data.data.user as User;
-    }
-    return null;
+    if (!response.ok) throw new Error(data.message || 'Failed to start registration');
+    return !!data.success;
+  }
+
+  static async verifyParentRegistration(email: string, otp: string): Promise<boolean> {
+    const response = await fetch(`${API_BASE_URL}/auth/register-parent-verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Failed to complete registration');
+    return !!data.success;
   }
 } 

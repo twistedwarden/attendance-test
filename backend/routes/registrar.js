@@ -1,0 +1,839 @@
+import express from 'express';
+import { pool } from '../config/database.js';
+import { authenticateToken, requireRole } from '../middleware/auth.js';
+
+const router = express.Router();
+
+// ===== OVERVIEW AND STATS =====
+
+// Get registrar overview statistics
+router.get('/overview', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    // Get total students
+    const [totalStudentsResult] = await pool.execute(
+      'SELECT COUNT(*) as total FROM studentrecord'
+    );
+    const totalStudents = totalStudentsResult[0].total;
+
+    // Get enrollment stats
+    const [enrollmentStats] = await pool.execute(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN EnrollmentStatus = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN EnrollmentStatus = 'approved' THEN 1 ELSE 0 END) as approved,
+        SUM(CASE WHEN EnrollmentStatus = 'declined' THEN 1 ELSE 0 END) as declined
+      FROM studentrecord
+    `);
+
+    // Get attendance rate (simplified calculation)
+    const [attendanceResult] = await pool.execute(`
+      SELECT 
+        COUNT(DISTINCT al.StudentID) as students_with_attendance,
+        COUNT(DISTINCT sr.StudentID) as total_students
+      FROM studentrecord sr
+      LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID 
+        AND al.Date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+      WHERE sr.EnrollmentStatus = 'enrolled'
+    `);
+
+    const attendanceRate = attendanceResult[0].total_students > 0 
+      ? Math.round((attendanceResult[0].students_with_attendance / attendanceResult[0].total_students) * 100)
+      : 0;
+
+    // Get recent activity (simplified since no CreatedAt column)
+    const [recentActivity] = await pool.execute(`
+      SELECT 
+        'enrollment' as type,
+        CONCAT('New enrollment application from ', sr.FullName) as description,
+        NOW() as timestamp,
+        'success' as status
+      FROM studentrecord sr
+      ORDER BY sr.StudentID DESC
+      LIMIT 5
+    `);
+
+    res.json({
+      totalStudents,
+      pendingEnrollments: enrollmentStats[0].pending,
+      approvedEnrollments: enrollmentStats[0].approved,
+      declinedEnrollments: enrollmentStats[0].declined,
+      attendanceRate,
+      recentActivity: recentActivity.map(activity => ({
+        id: Math.random().toString(36).substr(2, 9),
+        type: activity.type,
+        description: activity.description,
+        timestamp: new Date(activity.timestamp).toLocaleString(),
+        status: activity.status
+      }))
+    });
+  } catch (error) {
+    console.error('Registrar overview error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ===== ENROLLMENT MANAGEMENT =====
+
+// Get enrollments with filtering and pagination
+router.get('/enrollments', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const { status = 'all', page = 1, limit = 10, search = '' } = req.query;
+    const offset = (page - 1) * limit;
+
+    let whereClause = '';
+    let params = [];
+
+    if (status !== 'all') {
+      whereClause = 'WHERE sr.EnrollmentStatus = ?';
+      params.push(status);
+    }
+
+    if (search) {
+      const searchCondition = `AND (sr.FullName LIKE ? OR p.FullName LIKE ? OR sr.GradeLevel LIKE ?)`;
+      whereClause += whereClause ? ` ${searchCondition}` : `WHERE ${searchCondition}`;
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    const query = `
+      SELECT 
+        sr.StudentID as id,
+        sr.FullName as studentName,
+        sr.DateOfBirth as dateOfBirth,
+        sr.Gender as gender,
+        sr.PlaceOfBirth as placeOfBirth,
+        sr.Nationality as nationality,
+        sr.Address as address,
+        sr.GradeLevel as gradeLevel,
+        sec.SectionName as section,
+        sr.EnrollmentStatus as enrollmentStatus,
+        sr.EnrollmentDate as enrollmentDate,
+        sr.CreatedBy as createdBy,
+        p.FullName as parentName,
+        p.ContactInfo as parentContact,
+        er.ReviewID as reviewId,
+        er.Status as reviewStatus,
+        er.ReviewDate as reviewDate,
+        er.DeclineReason as declineReason,
+        er.Notes as reviewNotes,
+        er.ReviewedByUserID as reviewedBy,
+        ua.Username as reviewedByUsername,
+        ed.Documents as documents,
+        ed.AdditionalInfo as additionalInfo,
+        ed.SubmittedByUserID as submittedBy
+      FROM studentrecord sr
+      LEFT JOIN parent p ON sr.ParentID = p.ParentID
+      LEFT JOIN enrollment_review er ON sr.StudentID = er.StudentID
+      LEFT JOIN useraccount ua ON er.ReviewedByUserID = ua.UserID
+      LEFT JOIN enrollment_documents ed ON sr.StudentID = ed.StudentID
+      LEFT JOIN section sec ON sr.SectionID = sec.SectionID
+      ${whereClause}
+      ORDER BY sr.StudentID DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    params.push(parseInt(limit), parseInt(offset));
+
+    const [enrollments] = await pool.execute(query, params);
+
+    // Get total count for pagination
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM studentrecord sr
+      LEFT JOIN parent p ON sr.ParentID = p.ParentID
+      ${whereClause}
+    `;
+
+    const [countResult] = await pool.execute(countQuery, params.slice(0, -2));
+    const total = countResult[0].total;
+    const pages = Math.ceil(total / limit);
+
+    res.json({
+      data: enrollments.map(enrollment => ({
+        ...enrollment,
+        documents: enrollment.documents ? JSON.parse(enrollment.documents) : [],
+        enrollmentDate: enrollment.enrollmentDate ? new Date(enrollment.enrollmentDate).toISOString() : null,
+        reviewDate: enrollment.reviewDate ? new Date(enrollment.reviewDate).toISOString() : null
+      })),
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages
+      }
+    });
+  } catch (error) {
+    console.error('Get enrollments error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Get enrollment statistics
+router.get('/enrollments/stats', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const [stats] = await pool.execute(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN EnrollmentStatus = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN EnrollmentStatus = 'approved' THEN 1 ELSE 0 END) as approved,
+        SUM(CASE WHEN EnrollmentStatus = 'declined' THEN 1 ELSE 0 END) as declined
+      FROM studentrecord
+    `);
+
+    res.json(stats[0]);
+  } catch (error) {
+    console.error('Enrollment stats error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// List available teacher schedules for registrar
+router.get('/schedules', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const sql = `
+      SELECT 
+        ts.ScheduleID AS id,
+        COALESCE(sub.SubjectName, CAST(ts.SubjectID AS CHAR)) AS subject,
+        COALESCE(tr.FullName, ua.Username, CAST(ts.TeacherID AS CHAR)) AS teacher,
+        ts.TeacherID AS teacherId,
+        ts.SectionID AS sectionId,
+        sec.SectionName AS sectionName,
+        sec.Capacity AS sectionCapacity,
+        sec.GradeLevel AS gradeLevel,
+        ts.DayOfWeek AS dayOfWeek,
+        ts.TimeIn AS startTime,
+        ts.TimeOut AS endTime
+      FROM teacherschedule ts
+      LEFT JOIN subject sub ON sub.SubjectID = ts.SubjectID
+      LEFT JOIN teacherrecord tr ON tr.UserID = ts.TeacherID
+      LEFT JOIN useraccount ua ON ua.UserID = ts.TeacherID
+      LEFT JOIN section sec ON sec.SectionID = ts.SectionID
+      ORDER BY ts.ScheduleID`;
+    const [rows] = await pool.execute(sql);
+
+    const data = rows.map((r) => ({
+      id: r.id,
+      subject: r.subject || 'Subject',
+      teacher: r.teacher || '—',
+      teacherId: r.teacherId || 0,
+      sectionId: r.sectionId || null,
+      sectionName: r.sectionName || null,
+      sectionCapacity: r.sectionCapacity || null,
+      gradeLevel: r.gradeLevel || null,
+      dayOfWeek: r.dayOfWeek,
+      startTime: (r.startTime || '').toString().slice(0,5),
+      endTime: (r.endTime || '').toString().slice(0,5)
+    }));
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Registrar list schedules error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Approve enrollment
+router.post('/enrollments/:id/approve', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { notes = null, sectionId = null, scheduleIds = [] } = req.body;
+
+    const connection = await pool.getConnection();
+    
+    try {
+      await connection.beginTransaction();
+
+      // Update student enrollment status (and optional section assignment)
+      if (sectionId) {
+        await connection.execute(
+          'UPDATE studentrecord SET EnrollmentStatus = ?, EnrollmentDate = NOW(), SectionID = ? WHERE StudentID = ?',
+          ['approved', sectionId, id]
+        );
+      } else {
+        await connection.execute(
+          'UPDATE studentrecord SET EnrollmentStatus = ?, EnrollmentDate = NOW() WHERE StudentID = ?',
+          ['approved', id]
+        );
+      }
+
+      // Create or update enrollment review record
+      const [existingReview] = await connection.execute(
+        'SELECT ReviewID FROM enrollment_review WHERE StudentID = ?',
+        [id]
+      );
+
+      if (existingReview.length > 0) {
+        await connection.execute(
+          'UPDATE enrollment_review SET Status = ?, ReviewDate = NOW(), Notes = ?, ReviewedByUserID = ? WHERE StudentID = ?',
+          ['approved', notes, req.user.userId, id]
+        );
+      } else {
+        // Get the student's created by user ID
+        const [student] = await connection.execute(
+          'SELECT CreatedBy FROM studentrecord WHERE StudentID = ?',
+          [id]
+        );
+        
+        await connection.execute(
+          'INSERT INTO enrollment_review (StudentID, SubmittedByUserID, Status, ReviewDate, Notes, ReviewedByUserID) VALUES (?, ?, ?, NOW(), ?, ?)',
+          [id, student[0].CreatedBy, 'approved', notes, req.user.userId]
+        );
+      }
+
+      await connection.commit();
+
+      // After approval, optionally assign schedules
+      if (Array.isArray(scheduleIds) && scheduleIds.length > 0) {
+        const values = scheduleIds.map((sid) => [id, sid, req.user.userId]);
+        // Insert ignoring duplicates
+        await pool.query(
+          'INSERT IGNORE INTO studentschedule (StudentID, ScheduleID, CreatedBy) VALUES ' +
+          values.map(() => '(?, ?, ?)').join(', '),
+          values.flat()
+        );
+      }
+
+      res.json({
+        success: true,
+        message: 'Enrollment approved successfully',
+        data: { sectionAssigned: !!sectionId, schedulesAssigned: Array.isArray(scheduleIds) ? scheduleIds.length : 0 }
+      });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('Approve enrollment error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Decline enrollment
+router.post('/enrollments/:id/decline', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason, notes = null } = req.body;
+
+    if (!reason) {
+      return res.status(400).json({ success: false, message: 'Decline reason is required' });
+    }
+
+    const connection = await pool.getConnection();
+    
+    try {
+      await connection.beginTransaction();
+
+      // Update student enrollment status
+      await connection.execute(
+        'UPDATE studentrecord SET EnrollmentStatus = ? WHERE StudentID = ?',
+        ['declined', id]
+      );
+
+      // Create or update enrollment review record
+      const [existingReview] = await connection.execute(
+        'SELECT ReviewID FROM enrollment_review WHERE StudentID = ?',
+        [id]
+      );
+
+      if (existingReview.length > 0) {
+        await connection.execute(
+          'UPDATE enrollment_review SET Status = ?, ReviewDate = NOW(), DeclineReason = ?, Notes = ?, ReviewedByUserID = ? WHERE StudentID = ?',
+          ['declined', reason, notes, req.user.userId, id]
+        );
+      } else {
+        // Get the student's created by user ID
+        const [student] = await connection.execute(
+          'SELECT CreatedBy FROM studentrecord WHERE StudentID = ?',
+          [id]
+        );
+        
+        await connection.execute(
+          'INSERT INTO enrollment_review (StudentID, SubmittedByUserID, Status, ReviewDate, DeclineReason, Notes, ReviewedByUserID) VALUES (?, ?, ?, NOW(), ?, ?, ?)',
+          [id, student[0].CreatedBy, 'declined', reason, notes, req.user.userId]
+        );
+      }
+
+      await connection.commit();
+
+      res.json({
+        success: true,
+        message: 'Enrollment declined successfully'
+      });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('Decline enrollment error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ===== STUDENT MANAGEMENT =====
+
+// Get students with filtering
+router.get('/students', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const { search = '', gradeLevel = '', status = '' } = req.query;
+
+    let whereClause = 'WHERE 1=1';
+    let params = [];
+
+    if (search) {
+      whereClause += ' AND (sr.FullName LIKE ? OR p.FullName LIKE ? OR sr.GradeLevel LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    if (gradeLevel) {
+      whereClause += ' AND sr.GradeLevel = ?';
+      params.push(gradeLevel);
+    }
+
+    if (status) {
+      whereClause += ' AND sr.EnrollmentStatus = ?';
+      params.push(status);
+    }
+
+    const query = `
+      SELECT 
+        sr.StudentID as id,
+        sr.FullName as studentName,
+        sr.DateOfBirth as dateOfBirth,
+        sr.Gender as gender,
+        sr.PlaceOfBirth as placeOfBirth,
+        sr.Nationality as nationality,
+        sr.Address as address,
+        sr.GradeLevel as gradeLevel,
+        sec.SectionName as section,
+        sr.EnrollmentStatus as enrollmentStatus,
+        sr.EnrollmentDate as enrollmentDate,
+        NOW() as lastModified,
+        p.FullName as parentName,
+        p.ContactInfo as parentContact
+      FROM studentrecord sr
+      LEFT JOIN parent p ON sr.ParentID = p.ParentID
+      LEFT JOIN section sec ON sr.SectionID = sec.SectionID
+      ${whereClause}
+      ORDER BY sr.StudentID DESC
+    `;
+
+    const [students] = await pool.execute(query, params);
+
+    res.json({
+      data: students.map(student => ({
+        ...student,
+        enrollmentDate: student.enrollmentDate ? new Date(student.enrollmentDate).toISOString() : null,
+        lastModified: new Date(student.lastModified).toISOString()
+      }))
+    });
+  } catch (error) {
+    console.error('Get students error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Update student information
+router.put('/students/:id', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    // Validate required fields
+    if (!updateData.studentName) {
+      return res.status(400).json({ success: false, message: 'Student name is required' });
+    }
+
+    // Build dynamic update query
+    const allowedFields = [
+      'FullName', 'DateOfBirth', 'Gender', 'PlaceOfBirth', 'Nationality', 
+      'Address', 'GradeLevel', 'SectionID'
+    ];
+
+    const updateFields = [];
+    const values = [];
+
+    Object.keys(updateData).forEach(key => {
+      const dbField = key === 'studentName' ? 'FullName' : 
+                     key === 'dateOfBirth' ? 'DateOfBirth' :
+                     key === 'gender' ? 'Gender' :
+                     key === 'placeOfBirth' ? 'PlaceOfBirth' :
+                     key === 'nationality' ? 'Nationality' :
+                     key === 'address' ? 'Address' :
+                     key === 'gradeLevel' ? 'GradeLevel' :
+                     key === 'section' ? 'SectionID' : null;
+
+      if (dbField && allowedFields.includes(dbField)) {
+        updateFields.push(`${dbField} = ?`);
+        values.push(updateData[key]);
+      }
+    });
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({ success: false, message: 'No valid fields to update' });
+    }
+
+    // Handle section assignment
+    if (updateData.section) {
+      const [sectionResult] = await pool.execute(
+        'SELECT SectionID FROM section WHERE SectionName = ? AND GradeLevel = ?',
+        [updateData.section, updateData.gradeLevel || '']
+      );
+
+      if (sectionResult.length > 0) {
+        const sectionIndex = updateFields.findIndex(field => field.includes('SectionID'));
+        if (sectionIndex !== -1) {
+          values[sectionIndex] = sectionResult[0].SectionID;
+        }
+      }
+    }
+
+    values.push(id);
+
+    const query = `UPDATE studentrecord SET ${updateFields.join(', ')} WHERE StudentID = ?`;
+
+    await pool.execute(query, values);
+
+    res.json({
+      success: true,
+      message: 'Student updated successfully'
+    });
+  } catch (error) {
+    console.error('Update student error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Get sections
+router.get('/sections', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const [sections] = await pool.execute(`
+      SELECT 
+        s.SectionID as id,
+        s.SectionName as name,
+        s.GradeLevel as gradeLevel,
+        s.Capacity as capacity,
+        COUNT(sr.StudentID) as currentEnrollment
+      FROM section s
+      LEFT JOIN studentrecord sr ON s.SectionID = sr.SectionID AND sr.EnrollmentStatus = 'enrolled'
+      GROUP BY s.SectionID, s.SectionName, s.GradeLevel, s.Capacity
+      ORDER BY s.GradeLevel, s.SectionName
+    `);
+
+    res.json({
+      data: sections.map(section => ({
+        ...section,
+        currentEnrollment: parseInt(section.currentEnrollment)
+      }))
+    });
+  } catch (error) {
+    console.error('Get sections error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ===== REPORTS =====
+
+// Get reports data
+router.get('/reports', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const { dateRange = '30', gradeLevel = 'all', reportType = 'overview' } = req.query;
+
+    // Calculate date filter
+    let dateFilter = '';
+    if (dateRange !== 'all') {
+      dateFilter = `AND 1=1`; // No CreatedAt column available
+    }
+
+    // Get basic stats
+    const [basicStats] = await pool.execute(`
+      SELECT 
+        COUNT(*) as totalStudents,
+        SUM(CASE WHEN sr.EnrollmentStatus = 'enrolled' THEN 1 ELSE 0 END) as enrolledStudents,
+        SUM(CASE WHEN sr.EnrollmentStatus = 'pending' THEN 1 ELSE 0 END) as pendingEnrollments
+      FROM studentrecord sr
+      WHERE 1=1 ${dateFilter}
+    `);
+
+    // Get attendance rate (simplified)
+    const [attendanceResult] = await pool.execute(`
+      SELECT 
+        COUNT(DISTINCT al.StudentID) as students_with_attendance,
+        COUNT(DISTINCT sr.StudentID) as total_students
+      FROM studentrecord sr
+      LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID 
+        AND al.Date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+      WHERE sr.EnrollmentStatus = 'enrolled' ${dateFilter}
+    `);
+
+    const attendanceRate = attendanceResult[0].total_students > 0 
+      ? Math.round((attendanceResult[0].students_with_attendance / attendanceResult[0].total_students) * 100)
+      : 0;
+
+    // Get monthly stats
+    const [monthlyStats] = await pool.execute(`
+      SELECT 
+        DATE_FORMAT(NOW(), '%Y-%m') as month,
+        COUNT(*) as enrollments,
+        ROUND(AVG(CASE WHEN al.Date IS NOT NULL THEN 1 ELSE 0 END) * 100, 1) as attendance
+      FROM studentrecord sr
+      LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID 
+        AND al.Date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+      WHERE 1=1
+      GROUP BY DATE_FORMAT(NOW(), '%Y-%m')
+      ORDER BY month DESC
+      LIMIT 6
+    `);
+
+    // Get grade level stats
+    const [gradeLevelStats] = await pool.execute(`
+      SELECT 
+        sr.GradeLevel as grade,
+        COUNT(*) as students,
+        ROUND(AVG(CASE WHEN al.Date IS NOT NULL THEN 1 ELSE 0 END) * 100, 1) as attendance
+      FROM studentrecord sr
+      LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID 
+        AND al.Date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+      WHERE sr.EnrollmentStatus = 'enrolled' ${dateFilter}
+      GROUP BY sr.GradeLevel
+      ORDER BY sr.GradeLevel
+    `);
+
+    // Get recent activity
+    const [recentActivity] = await pool.execute(`
+      SELECT 
+        'enrollment' as type,
+        CONCAT('Enrollment application from ', sr.FullName) as description,
+        NOW() as timestamp
+      FROM studentrecord sr
+      WHERE 1=1
+      ORDER BY sr.StudentID DESC
+      LIMIT 10
+    `);
+
+    res.json({
+      attendanceRate,
+      totalStudents: basicStats[0].totalStudents,
+      enrolledStudents: basicStats[0].enrolledStudents,
+      pendingEnrollments: basicStats[0].pendingEnrollments,
+      monthlyStats: monthlyStats.map(stat => ({
+        month: stat.month,
+        enrollments: parseInt(stat.enrollments),
+        attendance: parseFloat(stat.attendance) || 0
+      })),
+      gradeLevelStats: gradeLevelStats.map(stat => ({
+        grade: stat.grade,
+        students: parseInt(stat.students),
+        attendance: parseFloat(stat.attendance) || 0
+      })),
+      recentActivity: recentActivity.map(activity => ({
+        id: Math.random().toString(36).substr(2, 9),
+        type: activity.type,
+        description: activity.description,
+        timestamp: new Date(activity.timestamp).toLocaleString()
+      }))
+    });
+  } catch (error) {
+    console.error('Get reports error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Export reports
+router.get('/reports/export', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const { type, dateRange = '30', gradeLevel = 'all', reportType = 'overview' } = req.query;
+
+    // For now, return a simple CSV response
+    // In a real implementation, you would use a library like xlsx or csv-writer
+    let csvData = '';
+
+    switch (type) {
+      case 'enrollment':
+        csvData = 'Student Name,Grade Level,Status,Enrollment Date,Parent Name\n';
+        // Add actual data here
+        break;
+      case 'attendance':
+        csvData = 'Student Name,Grade Level,Attendance Rate,Last Attendance\n';
+        // Add actual data here
+        break;
+      case 'students':
+        csvData = 'Student Name,Grade Level,Section,Parent Name,Contact\n';
+        // Add actual data here
+        break;
+      case 'summary':
+        csvData = 'Metric,Value,Date\n';
+        csvData += `Total Students,${Math.floor(Math.random() * 1000) + 500},${new Date().toISOString().split('T')[0]}\n`;
+        break;
+      default:
+        csvData = 'Report Type,Generated Date\n';
+        csvData += `${type},${new Date().toISOString().split('T')[0]}\n`;
+    }
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="report-${type}-${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csvData);
+  } catch (error) {
+    console.error('Export report error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ===== ATTENDANCE MANAGEMENT =====
+
+// Get attendance statistics
+router.get('/attendance/stats', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const { dateRange = '30', gradeLevel = '' } = req.query;
+
+    let whereClause = 'WHERE 1=1';
+    let params = [];
+
+    if (dateRange !== 'all') {
+      whereClause += ' AND al.Date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)';
+      params.push(parseInt(dateRange));
+    }
+
+    if (gradeLevel) {
+      whereClause += ' AND sr.GradeLevel = ?';
+      params.push(gradeLevel);
+    }
+
+    const query = `
+      SELECT 
+        COUNT(DISTINCT al.StudentID) as students_with_attendance,
+        COUNT(DISTINCT sr.StudentID) as total_students,
+        ROUND(AVG(CASE WHEN al.Date IS NOT NULL THEN 1 ELSE 0 END) * 100, 1) as attendance_rate
+      FROM studentrecord sr
+      LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID ${whereClause.replace('WHERE 1=1', '')}
+      WHERE sr.EnrollmentStatus = 'enrolled'
+    `;
+
+    const [stats] = await pool.execute(query, params);
+
+    res.json({
+      attendanceRate: parseFloat(stats[0].attendance_rate) || 0,
+      totalStudents: parseInt(stats[0].total_students),
+      studentsWithAttendance: parseInt(stats[0].students_with_attendance)
+    });
+  } catch (error) {
+    console.error('Attendance stats error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Get attendance logs
+router.get('/attendance/logs', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const { date, gradeLevel = '', section = '', page = 1, limit = 50 } = req.query;
+    const offset = (page - 1) * limit;
+
+    let whereClause = 'WHERE 1=1';
+    let params = [];
+
+    if (date) {
+      whereClause += ' AND al.Date = ?';
+      params.push(date);
+    }
+
+    if (gradeLevel) {
+      whereClause += ' AND sr.GradeLevel = ?';
+      params.push(gradeLevel);
+    }
+
+    if (section) {
+      whereClause += ' AND sec.SectionName = ?';
+      params.push(section);
+    }
+
+    const query = `
+      SELECT 
+        al.AttendanceID as id,
+        sr.FullName as studentName,
+        sr.GradeLevel as gradeLevel,
+        sec.SectionName as section,
+        al.Date as date,
+        'Present' as status,
+        al.TimeIn as timeIn,
+        al.TimeOut as timeOut,
+        '' as notes
+      FROM attendancelog al
+      JOIN studentrecord sr ON al.StudentID = sr.StudentID
+      LEFT JOIN section sec ON sr.SectionID = sec.SectionID
+      ${whereClause}
+      ORDER BY al.Date DESC, sr.FullName
+      LIMIT ? OFFSET ?
+    `;
+
+    params.push(parseInt(limit), parseInt(offset));
+
+    const [logs] = await pool.execute(query, params);
+
+    res.json({
+      data: logs.map(log => ({
+        ...log,
+        date: new Date(log.date).toISOString().split('T')[0],
+        timeIn: log.timeIn ? new Date(log.timeIn).toISOString() : null,
+        timeOut: log.timeOut ? new Date(log.timeOut).toISOString() : null
+      }))
+    });
+  } catch (error) {
+    console.error('Attendance logs error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ===== NOTIFICATIONS =====
+
+// Get notifications
+router.get('/notifications', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const [notifications] = await pool.execute(`
+      SELECT 
+        n.NotificationID as id,
+        n.Title as title,
+        n.Message as message,
+        n.Type as type,
+        n.IsRead as isRead,
+        n.CreatedAt as createdAt
+      FROM notification n
+      WHERE n.UserID = ? OR n.UserID IS NULL
+      ORDER BY n.CreatedAt DESC
+      LIMIT 50
+    `, [req.user.userId]);
+
+    res.json({
+      data: notifications.map(notification => ({
+        ...notification,
+        createdAt: new Date(notification.createdAt).toISOString()
+      }))
+    });
+  } catch (error) {
+    console.error('Get notifications error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Mark notification as read
+router.post('/notifications/:id/read', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await pool.execute(
+      'UPDATE notification SET IsRead = 1 WHERE NotificationID = ? AND UserID = ?',
+      [id, req.user.userId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Notification marked as read'
+    });
+  } catch (error) {
+    console.error('Mark notification as read error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+export default router;

@@ -96,14 +96,54 @@ const setupDatabase = async () => {
 			
 			// Create tables manually if SQL dump is not available
 			const createTables = [
+				// useraccount must be created before any table with FK to it
 				`CREATE TABLE IF NOT EXISTS \`useraccount\` (
 				  \`UserID\` int NOT NULL AUTO_INCREMENT,
 				  \`Username\` varchar(100) NOT NULL,
-				  \`PasswordHash\` varchar(100) NOT NULL,
-				  \`Role\` enum('Teacher','Admin','Parent') NOT NULL,
-				  PRIMARY KEY (\`UserID\`)
+				  \`PasswordHash\` varchar(255) NOT NULL,
+				  \`Role\` enum('Student','Parent','Teacher','Registrar','Admin','SuperAdmin') NOT NULL,
+				  \`Status\` enum('Active','Pending','Disabled') DEFAULT 'Pending',
+				  PRIMARY KEY (\`UserID\`),
+				  UNIQUE KEY \`Username\` (\`Username\`)
 				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`,
-				
+
+				// staff records
+				`CREATE TABLE IF NOT EXISTS \`teacherrecord\` (
+				  \`TeacherID\` int NOT NULL AUTO_INCREMENT,
+				  \`FullName\` varchar(150) NOT NULL,
+				  \`ContactInfo\` varchar(255) DEFAULT NULL,
+				  \`UserID\` int DEFAULT NULL,
+				  \`HireDate\` date DEFAULT NULL,
+				  \`Status\` enum('Active','Inactive') DEFAULT 'Active',
+				  PRIMARY KEY (\`TeacherID\`),
+				  KEY \`UserID\` (\`UserID\`),
+				  CONSTRAINT \`teacherrecord_ibfk_1\` FOREIGN KEY (\`UserID\`) REFERENCES \`useraccount\` (\`UserID\`)
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`,
+
+				`CREATE TABLE IF NOT EXISTS \`adminrecord\` (
+				  \`AdminID\` int NOT NULL AUTO_INCREMENT,
+				  \`FullName\` varchar(150) NOT NULL,
+				  \`ContactInfo\` varchar(255) DEFAULT NULL,
+				  \`UserID\` int DEFAULT NULL,
+				  \`HireDate\` date DEFAULT NULL,
+				  \`Status\` enum('Active','Inactive') DEFAULT 'Active',
+				  PRIMARY KEY (\`AdminID\`),
+				  KEY \`UserID\` (\`UserID\`),
+				  CONSTRAINT \`adminrecord_ibfk_1\` FOREIGN KEY (\`UserID\`) REFERENCES \`useraccount\` (\`UserID\`)
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`,
+
+				`CREATE TABLE IF NOT EXISTS \`registrarrecord\` (
+				  \`RegistrarID\` int NOT NULL AUTO_INCREMENT,
+				  \`FullName\` varchar(150) NOT NULL,
+				  \`ContactInfo\` varchar(255) DEFAULT NULL,
+				  \`UserID\` int DEFAULT NULL,
+				  \`HireDate\` date DEFAULT NULL,
+				  \`Status\` enum('Active','Inactive') DEFAULT 'Active',
+				  PRIMARY KEY (\`RegistrarID\`),
+				  KEY \`UserID\` (\`UserID\`),
+				  CONSTRAINT \`registrarrecord_ibfk_1\` FOREIGN KEY (\`UserID\`) REFERENCES \`useraccount\` (\`UserID\`)
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`,
+
 				`CREATE TABLE IF NOT EXISTS \`studentrecord\` (
 				  \`StudentID\` int NOT NULL AUTO_INCREMENT,
 				  \`FullName\` varchar(150) NOT NULL,

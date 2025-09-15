@@ -62,8 +62,6 @@ const initializeDefaultUsers = async () => {
     const userCount = rows[0].count;
 
     if (userCount === 0) {
-      console.log('📝 Initializing default users...');
-      
       const defaultUsers = [
         {
           username: 'admin@foothills.edu',
@@ -98,10 +96,6 @@ const initializeDefaultUsers = async () => {
           [user.username, user.passwordHash, user.role]
         );
       }
-
-      console.log('✅ Default users initialized successfully');
-    } else {
-      console.log(`📊 Found ${userCount} existing users in database`);
     }
   } catch (error) {
     console.error('❌ Error initializing default users:', error.message);
@@ -256,76 +250,6 @@ export const createAuditTrail = async ({ userId, action, tableAffected = null, r
   }
 };
 
-export const getRegistrations = async ({ status = 'Pending' } = {}) => {
-  try {
-    const [rows] = await pool.execute(
-      'SELECT * FROM registration WHERE Status = ? ORDER BY RegistrationID DESC',
-      [status]
-    );
-    return rows;
-  } catch (error) {
-    console.error('Error fetching registrations:', error);
-    throw error;
-  }
-};
-
-export const reviewRegistration = async ({ registrationId, reviewerUserId, decision }) => {
-  // decision: 'Approved' | 'Denied'
-  const connection = await pool.getConnection();
-  try {
-    await connection.beginTransaction();
-
-    const [rows] = await connection.execute(
-      'SELECT * FROM registration WHERE RegistrationID = ? FOR UPDATE',
-      [registrationId]
-    );
-    const registration = rows[0];
-    if (!registration) {
-      await connection.rollback();
-      return { updated: false, createdUserId: null };
-    }
-
-    // Update registration status
-    await connection.execute(
-      'UPDATE registration SET Status = ?, ReviewedBy = ?, ReviewedDate = NOW() WHERE RegistrationID = ?',
-      [decision, reviewerUserId, registrationId]
-    );
-
-    let createdUserId = null;
-    if (decision === 'Approved') {
-      // Create corresponding useraccount with Active status (idempotent by Username)
-      const role = registration.UserType; // 'Parent' or 'Teacher'
-      try {
-        // Check if user already exists
-        const [existingUsers] = await connection.execute(
-          'SELECT UserID FROM useraccount WHERE Username = ? LIMIT 1',
-          [registration.Username]
-        );
-        if (Array.isArray(existingUsers) && existingUsers.length > 0) {
-          createdUserId = existingUsers[0].UserID;
-        } else {
-          const [insertResult] = await connection.execute(
-            'INSERT INTO useraccount (Username, PasswordHash, Role, Status) VALUES (?, ?, ?, ?)',
-            [registration.Username, registration.PasswordHash, role, 'Active']
-          );
-          createdUserId = insertResult.insertId;
-        }
-      } catch (e) {
-        console.error('Non-blocking user creation error during registration approval:', e?.message || e);
-        // Do not fail the approval if user creation fails; leave createdUserId as null
-      }
-    }
-
-    await connection.commit();
-    return { updated: true, createdUserId };
-  } catch (error) {
-    await connection.rollback();
-    console.error('Error reviewing registration:', error);
-    throw error;
-  } finally {
-    connection.release();
-  }
-};
 
 export const getAttendanceReports = async ({ limit = 50, offset = 0 } = {}) => {
   try {
@@ -356,10 +280,11 @@ export const createAttendanceReport = async ({ generatedBy, studentId = null, sc
 
 export const getAttendanceLog = async ({ limit = 50, offset = 0, date = null } = {}) => {
   try {
-    let sql = `SELECT al.AttendanceID, al.StudentID, al.Date, al.TimeIn, al.TimeOut, al.Status,
-                      s.FullName, s.GradeLevel, s.Section
+    let sql = `SELECT al.AttendanceID, al.StudentID, al.Date, al.TimeIn, al.TimeOut,
+                      s.FullName, s.GradeLevel, sec.SectionName as Section
                FROM attendancelog al
-               LEFT JOIN studentrecord s ON s.StudentID = al.StudentID`;
+               LEFT JOIN studentrecord s ON s.StudentID = al.StudentID
+               LEFT JOIN section sec ON sec.SectionID = s.SectionID`;
     const params = [];
     if (date) {
       sql += ' WHERE al.Date = ?';
@@ -372,6 +297,325 @@ export const getAttendanceLog = async ({ limit = 50, offset = 0, date = null } =
     return rows;
   } catch (error) {
     console.error('Error fetching attendance log:', error);
+    throw error;
+  }
+};
+
+// Get student subjects (now through studentschedule)
+export const getStudentSubjects = async (studentId) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT 
+         ss.StudentScheduleID, 
+         ss.StudentID, 
+         ts.SubjectID, 
+         ts.TeacherID,
+         s.SubjectName, 
+         s.Description,
+         ts.ScheduleID,
+         ts.TimeIn,
+         ts.TimeOut,
+         ts.DayOfWeek
+       FROM studentschedule ss
+       JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+       LEFT JOIN subject s ON s.SubjectID = ts.SubjectID
+       WHERE ss.StudentID = ?`,
+      [studentId]
+    );
+    return rows;
+  } catch (error) {
+    console.error('Error fetching student subjects:', error);
+    throw error;
+  }
+};
+
+// Create subject attendance entry
+export const createSubjectAttendance = async ({ studentId, subjectId, date, status = 'Present', validatedBy = null, timeIn = null }) => {
+  try {
+    const [result] = await pool.execute(
+      'INSERT INTO subjectattendance (StudentID, SubjectID, Date, Status, ValidatedBy, CreatedAt) VALUES (?, ?, ?, ?, ?, ?)',
+      [studentId, subjectId, date, status, validatedBy, timeIn ? `${date} ${timeIn}` : null]
+    );
+    return result.insertId;
+  } catch (error) {
+    console.error('Error creating subject attendance:', error);
+    throw error;
+  }
+};
+
+// Get subject attendance for a student
+export const getSubjectAttendance = async (studentId, date = null) => {
+  try {
+    let sql = `SELECT sa.SubjectAttendanceID, sa.StudentID, sa.SubjectID, sa.Date, sa.Status, sa.ValidatedBy, sa.CreatedAt,
+                      s.SubjectName, s.Description
+               FROM subjectattendance sa
+               LEFT JOIN subject s ON s.SubjectID = sa.SubjectID
+               WHERE sa.StudentID = ?`;
+    const params = [studentId];
+    
+    if (date) {
+      sql += ' AND sa.Date = ?';
+      params.push(date);
+    }
+    
+    sql += ' ORDER BY sa.Date DESC, sa.CreatedAt DESC';
+    
+    const [rows] = await pool.execute(sql, params);
+    return rows;
+  } catch (error) {
+    console.error('Error fetching subject attendance:', error);
+    throw error;
+  }
+};
+
+// Helper function to determine attendance status based on time and schedule
+const calculateAttendanceStatus = (arrivalTime, scheduleTimeIn, scheduleTimeOut, gracePeriodMinutes) => {
+  if (!arrivalTime || !scheduleTimeIn || !scheduleTimeOut) {
+    return 'Present'; // Default to Present if no time data
+  }
+
+  const arrival = new Date(`2000-01-01 ${arrivalTime}`);
+  const timeIn = new Date(`2000-01-01 ${scheduleTimeIn}`);
+  const timeOut = new Date(`2000-01-01 ${scheduleTimeOut}`);
+  const gracePeriod = gracePeriodMinutes || 15; // Default 15 minutes if not specified
+
+  // Calculate the latest acceptable time (end time + grace period)
+  const latestAcceptable = new Date(timeOut.getTime() + (gracePeriod * 60000));
+
+  // If arrival is after the class has completely ended (including grace period), mark as Absent
+  if (arrival > latestAcceptable) {
+    return 'Absent';
+  }
+  // If arrival is after class start but before class end + grace period, mark as Late
+  else if (arrival > timeIn) {
+    return 'Late';
+  }
+  // If arrival is before or at class start, mark as Present
+  else {
+    return 'Present';
+  }
+};
+
+// Attendance - manual create entry
+export const createManualAttendance = async ({ studentId, date = null, timeIn = null, timeOut = null, status = 'Present', validatedBy = null }) => {
+  try {
+    // Normalize values
+    const finalDate = date || new Date().toISOString().slice(0, 10);
+
+    // Create attendance log entry (without status)
+    const [result] = await pool.execute(
+      'INSERT INTO attendancelog (StudentID, Date, TimeIn, TimeOut, ValidatedBy) VALUES (?, ?, ?, ?, ?)',
+      [studentId, finalDate, timeIn, timeOut, validatedBy]
+    );
+
+    // Get all schedules for this student
+    const [studentSchedules] = await pool.execute(`
+      SELECT 
+        ts.ScheduleID,
+        ts.SubjectID, 
+        s.SubjectName, 
+        ts.TimeIn, 
+        ts.TimeOut, 
+        ts.GracePeriod,
+        ts.DayOfWeek
+      FROM studentschedule ss
+      JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+      JOIN subject s ON s.SubjectID = ts.SubjectID
+      WHERE ss.StudentID = ? 
+        AND ts.DayOfWeek = CASE DAYNAME(?)
+          WHEN 'Monday' THEN 'Mon'
+          WHEN 'Tuesday' THEN 'Tue'
+          WHEN 'Wednesday' THEN 'Wed'
+          WHEN 'Thursday' THEN 'Thu'
+          WHEN 'Friday' THEN 'Fri'
+          WHEN 'Saturday' THEN 'Sat'
+          WHEN 'Sunday' THEN 'Sun'
+        END
+    `, [studentId, finalDate]);
+    
+    console.log(`Found ${studentSchedules.length} schedules for student ${studentId}`);
+    
+    // Create subject attendance with proper status calculation
+    for (const schedule of studentSchedules) {
+      try {
+        let finalStatus;
+        
+        if (status === 'Present') {
+          // Use automatic calculation based on arrival time and schedule
+          finalStatus = calculateAttendanceStatus(
+            timeIn, 
+            schedule.TimeIn, 
+            schedule.TimeOut, 
+            schedule.GracePeriod
+          );
+        } else if (status === 'Excused') {
+          // Use the provided status (Excused)
+          finalStatus = 'Excused';
+        } else {
+          // Default to Present for any other status
+          finalStatus = 'Present';
+        }
+        
+        console.log(`Creating subject attendance for subject ${schedule.SubjectID} with status ${finalStatus}`);
+        
+        await createSubjectAttendance({
+          studentId,
+          subjectId: schedule.SubjectID,
+          date: finalDate,
+          status: finalStatus,
+          validatedBy,
+          timeIn
+        });
+        
+        console.log(`Successfully created subject attendance for subject ${schedule.SubjectID}`);
+      } catch (subjectError) {
+        console.error(`Error creating subject attendance for subject ${schedule.SubjectID}:`, subjectError);
+        // Continue with other subjects even if one fails
+      }
+    }
+
+    const [rows] = await pool.execute(
+      `SELECT al.AttendanceID, al.StudentID, al.Date, al.TimeIn, al.TimeOut,
+              s.FullName, s.GradeLevel, sec.SectionName as Section
+       FROM attendancelog al
+       LEFT JOIN studentrecord s ON s.StudentID = al.StudentID
+       LEFT JOIN section sec ON sec.SectionID = s.SectionID
+       WHERE al.AttendanceID = ?`,
+      [result.insertId]
+    );
+    return rows[0] || null;
+  } catch (error) {
+    console.error('Error creating manual attendance:', error);
+    throw error;
+  }
+};
+
+// Section functions
+export const getSections = async (gradeLevel = null, isActive = true) => {
+  try {
+    let sql = `
+      SELECT s.SectionID, s.SectionName, s.GradeLevel, s.Description, s.Capacity, s.IsActive, s.CreatedAt, s.UpdatedAt
+      FROM section s
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    if (gradeLevel) {
+      sql += ' AND s.GradeLevel = ?';
+      params.push(gradeLevel);
+    }
+    if (isActive !== null) {
+      sql += ' AND s.IsActive = ?';
+      params.push(isActive);
+    }
+    
+    sql += ' ORDER BY s.GradeLevel, s.SectionName';
+    
+    const [rows] = await pool.execute(sql, params);
+    return rows;
+  } catch (error) {
+    console.error('Error fetching sections:', error);
+    throw error;
+  }
+};
+
+export const createSection = async ({ sectionName, gradeLevel, description = null, capacity = null, isActive = true }) => {
+  try {
+    const [result] = await pool.execute(
+      'INSERT INTO section (SectionName, GradeLevel, Description, Capacity, IsActive) VALUES (?, ?, ?, ?, ?)',
+      [sectionName, gradeLevel, description, capacity, isActive]
+    );
+    return result.insertId;
+  } catch (error) {
+    console.error('Error creating section:', error);
+    throw error;
+  }
+};
+
+export const updateSection = async (sectionId, { sectionName, gradeLevel, description, capacity, isActive }) => {
+  try {
+    const [result] = await pool.execute(
+      'UPDATE section SET SectionName = ?, GradeLevel = ?, Description = ?, Capacity = ?, IsActive = ? WHERE SectionID = ?',
+      [sectionName, gradeLevel, description, capacity, isActive, sectionId]
+    );
+    return result.affectedRows > 0;
+  } catch (error) {
+    console.error('Error updating section:', error);
+    throw error;
+  }
+};
+
+export const deleteSection = async (sectionId) => {
+  try {
+    const [result] = await pool.execute(
+      'DELETE FROM section WHERE SectionID = ?',
+      [sectionId]
+    );
+    return result.affectedRows > 0;
+  } catch (error) {
+    console.error('Error deleting section:', error);
+    throw error;
+  }
+};
+
+export const getSectionById = async (sectionId) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT * FROM section WHERE SectionID = ?',
+      [sectionId]
+    );
+    return rows[0] || null;
+  } catch (error) {
+    console.error('Error fetching section by ID:', error);
+    throw error;
+  }
+};
+
+// Note: Section schedule functions have been removed. All scheduling now uses the teacherschedule table.
+
+// Recalculate attendance status for existing records
+export const recalculateAttendanceStatus = async (studentId, date) => {
+  try {
+    // Get the attendance log entry to get the arrival time
+    const [attendanceLog] = await pool.execute(
+      'SELECT TimeIn FROM attendancelog WHERE StudentID = ? AND Date = ?',
+      [studentId, date]
+    );
+    
+    if (attendanceLog.length === 0) {
+      throw new Error('No attendance log found for this student and date');
+    }
+    
+    const arrivalTime = attendanceLog[0].TimeIn;
+    
+    // Get all subject attendance records for this student and date
+    const [subjectRecords] = await pool.execute(`
+      SELECT sa.SubjectAttendanceID, sa.SubjectID, ts.TimeIn, ts.TimeOut, ts.GracePeriod
+      FROM subjectattendance sa
+      LEFT JOIN teacherschedule ts ON ts.SubjectID = sa.SubjectID 
+        AND ts.SectionID = (SELECT SectionID FROM studentrecord WHERE StudentID = ?)
+        AND ts.DayOfWeek = DAYNAME(?)
+      WHERE sa.StudentID = ? AND sa.Date = ?
+    `, [studentId, date, studentId, date]);
+    
+    // Update each subject attendance record with correct status
+    for (const record of subjectRecords) {
+      const status = calculateAttendanceStatus(
+        arrivalTime,
+        record.TimeIn,
+        record.TimeOut,
+        record.GracePeriod
+      );
+      
+      await pool.execute(
+        'UPDATE subjectattendance SET Status = ? WHERE SubjectAttendanceID = ?',
+        [status, record.SubjectAttendanceID]
+      );
+    }
+    
+    return { success: true, message: 'Attendance status recalculated successfully' };
+  } catch (error) {
+    console.error('Error recalculating attendance status:', error);
     throw error;
   }
 };
@@ -391,13 +635,13 @@ export const searchParents = async (q) => {
   }
 };
 
-export const createParentProfile = async ({ fullName, contactInfo = null, userId }) => {
+export const createParentProfile = async ({ fullName, contactInfo = null, relationship = 'Guardian', userId }) => {
   try {
     const [res] = await pool.execute(
-      'INSERT INTO parent (FullName, ContactInfo, UserID) VALUES (?, ?, ?)',
-      [fullName, contactInfo, userId]
+      'INSERT INTO parent (FullName, ContactInfo, Relationship, UserID) VALUES (?, ?, ?, ?)',
+      [fullName, contactInfo, relationship, userId]
     );
-    const [rows] = await pool.execute('SELECT ParentID, FullName, ContactInfo, UserID FROM parent WHERE ParentID = ?', [res.insertId]);
+    const [rows] = await pool.execute('SELECT ParentID, FullName, ContactInfo, Relationship, UserID FROM parent WHERE ParentID = ?', [res.insertId]);
     return rows[0] || null;
   } catch (error) {
     console.error('Error creating parent profile:', error);
@@ -441,15 +685,102 @@ export const createParentUserAndProfile = async ({ fullName, contactInfo = null,
   }
 };
 
+// OTP management functions for registration
+export const storeOtp = async (email, otp, expiry, type, data = null) => {
+  try {
+    // Clear any existing OTP for this email and type
+    await pool.execute(
+      'DELETE FROM registration_otp WHERE email = ? AND type = ?',
+      [email, type]
+    );
+    
+    // Insert new OTP
+    const [result] = await pool.execute(
+      'INSERT INTO registration_otp (email, otp, expiry_date, type, data) VALUES (?, ?, ?, ?, ?)',
+      [email, otp, expiry, type, data ? JSON.stringify(data) : null]
+    );
+    return result.insertId;
+  } catch (error) {
+    console.error('Error storing OTP:', error);
+    throw error;
+  }
+};
+
+export const verifyOtp = async (email, otp, type) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT * FROM registration_otp WHERE email = ? AND otp = ? AND type = ? AND expiry_date > NOW()',
+      [email, otp, type]
+    );
+    
+    if (rows.length === 0) {
+      return null;
+    }
+    
+    const otpRecord = rows[0];
+    const data = otpRecord.data ? JSON.parse(otpRecord.data) : null;
+    
+    return {
+      ...otpRecord,
+      data
+    };
+  } catch (error) {
+    console.error('Error verifying OTP:', error);
+    throw error;
+  }
+};
+
+export const clearOtp = async (email, type) => {
+  try {
+    await pool.execute(
+      'DELETE FROM registration_otp WHERE email = ? AND type = ?',
+      [email, type]
+    );
+  } catch (error) {
+    console.error('Error clearing OTP:', error);
+    throw error;
+  }
+};
+
+// Enrollment documents management
+export const storeEnrollmentDocuments = async (studentId, enrollmentData) => {
+  try {
+    const [result] = await pool.execute(
+      'INSERT INTO enrollment_documents (StudentID, SubmittedByUserID, Documents, AdditionalInfo, CreatedAt) VALUES (?, ?, ?, ?, ?)',
+      [studentId, enrollmentData.submittedByUserId, JSON.stringify(enrollmentData.documents), enrollmentData.additionalInfo, new Date()]
+    );
+    return result.insertId;
+  } catch (error) {
+    console.error('Error storing enrollment documents:', error);
+    throw error;
+  }
+};
+
+export const linkStudentToParent = async (studentId, parentId) => {
+  try {
+    await pool.execute(
+      'UPDATE studentrecord SET ParentID = ? WHERE StudentID = ?',
+      [parentId, studentId]
+    );
+    return true;
+  } catch (error) {
+    console.error('Error linking student to parent:', error);
+    throw error;
+  }
+};
+
 // Student management
 export const getStudents = async () => {
   try {
     const [rows] = await pool.execute(
-      `SELECT s.StudentID, s.FullName, s.GradeLevel, s.Section, s.ParentID,
+      `SELECT s.StudentID, s.FullName, s.GradeLevel, s.SectionID, s.ParentID, s.Status,
               IF(s.FingerprintTemplate IS NOT NULL AND OCTET_LENGTH(s.FingerprintTemplate) > 0, 1, 0) AS HasFingerprint,
-              p.ContactInfo as ParentContact, p.FullName as ParentName
+              p.ContactInfo as ParentContact, p.FullName as ParentName,
+              sec.SectionName as SectionName, sec.Description as SectionDescription, sec.Capacity as SectionCapacity
        FROM studentrecord s
        LEFT JOIN parent p ON p.ParentID = s.ParentID
+       LEFT JOIN section sec ON sec.SectionID = s.SectionID
+       WHERE s.EnrollmentStatus = 'approved'
        ORDER BY s.StudentID`
     );
     return rows;
@@ -459,7 +790,7 @@ export const getStudents = async () => {
   }
 };
 
-export const createStudent = async ({ fullName, gradeLevel = null, section = null, parentId = null, createdBy }) => {
+export const createStudent = async ({ fullName, dateOfBirth, gender, placeOfBirth, nationality, address, gradeLevel = null, sectionId = null, parentId = null, createdBy }) => {
   try {
     // Discover columns
     const dbName = process.env.DB_NAME || 'attendance';
@@ -472,8 +803,8 @@ export const createStudent = async ({ fullName, gradeLevel = null, section = nul
     const hasCreatedBy = cols.some(c => c.COLUMN_NAME === 'CreatedBy');
     const hasParentId = cols.some(c => c.COLUMN_NAME === 'ParentID');
 
-    const columns = ['FullName', 'GradeLevel', 'Section'];
-    const values = [fullName, gradeLevel, section];
+    const columns = ['FullName', 'DateOfBirth', 'Gender', 'PlaceOfBirth', 'Nationality', 'Address', 'GradeLevel', 'SectionID', 'Status'];
+    const values = [fullName, dateOfBirth, gender, placeOfBirth, nationality, address, gradeLevel, sectionId, 'Pending'];
 
     if (hasFingerprint) {
       // Supply empty buffer when not nullable
@@ -499,10 +830,12 @@ export const createStudent = async ({ fullName, gradeLevel = null, section = nul
     );
 
     const [rows] = await pool.execute(
-      `SELECT s.StudentID, s.FullName, s.GradeLevel, s.Section, s.ParentID,
-              p.ContactInfo as ParentContact, p.FullName as ParentName
+      `SELECT s.StudentID, s.FullName, s.GradeLevel, s.SectionID, s.ParentID,
+              p.ContactInfo as ParentContact, p.FullName as ParentName,
+              sec.SectionName as SectionName
        FROM studentrecord s
        LEFT JOIN parent p ON p.ParentID = s.ParentID
+       LEFT JOIN section sec ON sec.SectionID = s.SectionID
        WHERE s.StudentID = ?`,
       [result.insertId]
     );
@@ -519,7 +852,7 @@ export const updateStudent = async (studentId, updates) => {
     const values = [];
     if (updates.fullName !== undefined) { fields.push('FullName = ?'); values.push(updates.fullName); }
     if (updates.gradeLevel !== undefined) { fields.push('GradeLevel = ?'); values.push(updates.gradeLevel); }
-    if (updates.section !== undefined) { fields.push('Section = ?'); values.push(updates.section); }
+    if (updates.sectionId !== undefined) { fields.push('SectionID = ?'); values.push(updates.sectionId); }
     if (updates.parentId !== undefined) { fields.push('ParentID = ?'); values.push(updates.parentId); }
     if (fields.length === 0) {
       const [rows] = await pool.execute('SELECT * FROM studentrecord WHERE StudentID = ?', [studentId]);
@@ -532,10 +865,12 @@ export const updateStudent = async (studentId, updates) => {
     );
     if (result.affectedRows > 0) {
       const [rows] = await pool.execute(
-        `SELECT s.StudentID, s.FullName, s.GradeLevel, s.Section, s.ParentID,
-                p.ContactInfo as ParentContact
+        `SELECT s.StudentID, s.FullName, s.GradeLevel, s.SectionID, s.ParentID,
+                p.ContactInfo as ParentContact,
+                sec.SectionName as SectionName
          FROM studentrecord s
          LEFT JOIN parent p ON p.ParentID = s.ParentID
+         LEFT JOIN section sec ON sec.SectionID = s.SectionID
          WHERE s.StudentID = ?`,
         [studentId]
       );
@@ -619,6 +954,61 @@ export const consumeUserOtp = async (userId, otp) => {
     throw error;
   }
 };
+
+// Role-specific record creation functions
+export const createTeacherRecord = async ({ fullName, contactInfo = null, userId, hireDate = null }) => {
+  try {
+    const [result] = await pool.execute(
+      'INSERT INTO teacherrecord (FullName, ContactInfo, UserID, HireDate) VALUES (?, ?, ?, ?)',
+      [fullName, contactInfo, userId, hireDate]
+    );
+    return { teacherId: result.insertId };
+  } catch (error) {
+    console.error('Error creating teacher record:', error);
+    throw error;
+  }
+};
+
+export const createAdminRecord = async ({ fullName, contactInfo = null, userId, hireDate = null }) => {
+  try {
+    const [result] = await pool.execute(
+      'INSERT INTO adminrecord (FullName, ContactInfo, UserID, HireDate) VALUES (?, ?, ?, ?)',
+      [fullName, contactInfo, userId, hireDate]
+    );
+    return { adminId: result.insertId };
+  } catch (error) {
+    console.error('Error creating admin record:', error);
+    throw error;
+  }
+};
+
+export const createRegistrarRecord = async ({ fullName, contactInfo = null, userId, hireDate = null }) => {
+  try {
+    const [result] = await pool.execute(
+      'INSERT INTO registrarrecord (FullName, ContactInfo, UserID, HireDate) VALUES (?, ?, ?, ?)',
+      [fullName, contactInfo, userId, hireDate]
+    );
+    return { registrarId: result.insertId };
+  } catch (error) {
+    console.error('Error creating registrar record:', error);
+    throw error;
+  }
+};
+
+// Student status management
+export const setStudentStatus = async (studentId, status) => {
+  try {
+    const [result] = await pool.execute(
+      'UPDATE studentrecord SET Status = ? WHERE StudentID = ?',
+      [status, studentId]
+    );
+    return result.affectedRows > 0;
+  } catch (error) {
+    console.error('Error updating student status:', error);
+    throw error;
+  }
+};
+
 
 // Initialize database on startup
 initializeDatabase();

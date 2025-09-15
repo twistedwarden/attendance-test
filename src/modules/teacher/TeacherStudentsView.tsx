@@ -1,105 +1,73 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search, User, Phone, Mail, Filter } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { TeacherService, TeacherSchedule } from './api/teacherService';
+import StudentDetailsModal from './components/StudentDetailsModal';
 
-interface Student {
-  id: string;
-  name: string;
-  studentId: string;
-  section: string;
-  parentName: string;
-  parentPhone: string;
-  parentEmail: string;
-  attendanceRate: number;
-  lastAttendance: string;
-  status: 'active' | 'inactive';
-}
-
-const mockStudents: Student[] = [
-  {
-    id: '1',
-    name: 'Emma Johnson',
-    studentId: 'ST001',
-    section: 'A',
-    parentName: 'Robert Johnson',
-    parentPhone: '+1 (555) 123-4567',
-    parentEmail: 'robert.johnson@email.com',
-    attendanceRate: 96,
-    lastAttendance: '2024-01-15',
-    status: 'active'
-  },
-  {
-    id: '2',
-    name: 'Michael Chen',
-    studentId: 'ST002',
-    section: 'A',
-    parentName: 'Lisa Chen',
-    parentPhone: '+1 (555) 234-5678',
-    parentEmail: 'lisa.chen@email.com',
-    attendanceRate: 98,
-    lastAttendance: '2024-01-15',
-    status: 'active'
-  },
-  {
-    id: '3',
-    name: 'Sarah Davis',
-    studentId: 'ST003',
-    section: 'A',
-    parentName: 'Mark Davis',
-    parentPhone: '+1 (555) 345-6789',
-    parentEmail: 'mark.davis@email.com',
-    attendanceRate: 92,
-    lastAttendance: '2024-01-15',
-    status: 'active'
-  },
-  {
-    id: '4',
-    name: 'Alex Rodriguez',
-    studentId: 'ST004',
-    section: 'A',
-    parentName: 'Maria Rodriguez',
-    parentPhone: '+1 (555) 456-7890',
-    parentEmail: 'maria.rodriguez@email.com',
-    attendanceRate: 89,
-    lastAttendance: '2024-01-14',
-    status: 'active'
-  },
-  {
-    id: '5',
-    name: 'Olivia Thompson',
-    studentId: 'ST005',
-    section: 'A',
-    parentName: 'David Thompson',
-    parentPhone: '+1 (555) 567-8901',
-    parentEmail: 'david.thompson@email.com',
-    attendanceRate: 100,
-    lastAttendance: '2024-01-15',
-    status: 'active'
-  }
-];
+type Student = { id: number; studentId: number; studentName: string; gradeLevel?: string | null; sectionName?: string | null };
 
 export default function TeacherStudentsView() {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name');
+  const [schedules, setSchedules] = useState<TeacherSchedule[]>([]);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [detailStudentId, setDetailStudentId] = useState<number | null>(null);
 
-  const filteredStudents = mockStudents
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      try {
+        setError(null);
+        const data = await TeacherService.getSchedules();
+        if (ignore) return;
+        setSchedules(data);
+        if (data.length > 0) setSelectedScheduleId(prev => prev ?? data[0].id);
+      } catch (e: any) {
+        if (!ignore) setError(e?.message || 'Failed to load schedules');
+      }
+    })();
+    return () => { ignore = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedScheduleId) return;
+    let ignore = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const rows = await TeacherService.getStudents(selectedScheduleId);
+        if (ignore) return;
+        setStudents(rows as any);
+      } catch (e: any) {
+        if (!ignore) setError(e?.message || 'Failed to load students');
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    })();
+    return () => { ignore = true; };
+  }, [selectedScheduleId]);
+
+  const filteredStudents = students
     .filter(student => {
-      const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           student.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           student.parentName.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesSection = user && student.section === user.section;
+      const matchesSearch = (student.studentName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           String(student.studentId).includes(searchTerm);
+      const matchesSection = true;
       
       return matchesSearch && matchesSection;
     })
     .sort((a, b) => {
       switch (sortBy) {
         case 'name':
-          return a.name.localeCompare(b.name);
+          return (a.studentName || '').localeCompare(b.studentName || '');
         case 'attendance':
-          return b.attendanceRate - a.attendanceRate;
+          return 0;
         case 'studentId':
-          return a.studentId.localeCompare(b.studentId);
+          return String(a.studentId).localeCompare(String(b.studentId));
         default:
           return 0;
       }
@@ -118,11 +86,25 @@ export default function TeacherStudentsView() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="">
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">My Students</h2>
-        <p className="text-gray-600">{user?.gradeLevel} - Section {user?.section} ({filteredStudents.length} students)</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">My Students</h2>
+          <p className="text-gray-600">{filteredStudents.length} students</p>
+        </div>
+        <div>
+          <select
+            value={selectedScheduleId ?? ''}
+            onChange={(e) => setSelectedScheduleId(e.target.value ? Number(e.target.value) : null)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            {schedules.length === 0 && <option value="">No schedules</option>}
+            {schedules.map(s => (
+              <option key={s.id} value={s.id}>{s.dayOfWeek} • {s.subjectName}{s.sectionName ? ` • ${s.sectionName}` : ''} • {s.startTime}-{s.endTime}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Search and Filter */}
@@ -157,8 +139,8 @@ export default function TeacherStudentsView() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredStudents.map((student) => (
           <div
-            key={student.id}
-            className={`bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition-shadow ${getAttendanceBg(student.attendanceRate)}`}
+            key={student.studentId}
+            className={`bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition-shadow`}
           >
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center space-x-3">
@@ -166,47 +148,15 @@ export default function TeacherStudentsView() {
                   <User className="h-5 w-5 text-green-600" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">{student.name}</h3>
-                  <p className="text-sm text-gray-600">ID: {student.studentId}</p>
+                  <h3 className="font-semibold text-gray-900">{student.studentName}</h3>
+                  <p className="text-sm text-gray-600">ID: {student.studentId} {student.gradeLevel ? `• ${student.gradeLevel}` : ''} {student.sectionName ? `• ${student.sectionName}` : ''}</p>
                 </div>
               </div>
-              <div className="text-right">
-                <p className={`text-lg font-bold ${getAttendanceColor(student.attendanceRate)}`}>
-                  {student.attendanceRate}%
-                </p>
-                <p className="text-xs text-gray-500">Attendance</p>
-              </div>
+              <div className="text-right"></div>
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-center space-x-2 text-sm">
-                <User className="h-4 w-4 text-gray-400" />
-                <span className="text-gray-600">Parent:</span>
-                <span className="font-medium text-gray-900">{student.parentName}</span>
-              </div>
-              
-              <div className="flex items-center space-x-2 text-sm">
-                <Phone className="h-4 w-4 text-gray-400" />
-                <span className="text-gray-600">Phone:</span>
-                <a href={`tel:${student.parentPhone}`} className="font-medium text-blue-600 hover:text-blue-700">
-                  {student.parentPhone}
-                </a>
-              </div>
-              
-              <div className="flex items-center space-x-2 text-sm">
-                <Mail className="h-4 w-4 text-gray-400" />
-                <span className="text-gray-600">Email:</span>
-                <a href={`mailto:${student.parentEmail}`} className="font-medium text-blue-600 hover:text-blue-700 truncate">
-                  {student.parentEmail}
-                </a>
-              </div>
-              
-              <div className="pt-3 border-t border-gray-200">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-600">Last Attendance:</span>
-                  <span className="font-medium text-gray-900">{student.lastAttendance}</span>
-                </div>
-              </div>
+              <div className="pt-1"></div>
             </div>
 
             {/* Action Buttons */}
@@ -214,7 +164,9 @@ export default function TeacherStudentsView() {
               <button className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors">
                 Send Message
               </button>
-              <button className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-3 rounded-lg text-sm font-medium transition-colors">
+              <button
+                onClick={() => setDetailStudentId(student.studentId)}
+                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-3 rounded-lg text-sm font-medium transition-colors">
                 View Details
               </button>
             </div>
@@ -228,6 +180,16 @@ export default function TeacherStudentsView() {
           <p className="text-gray-500">No students found matching your search criteria</p>
         </div>
       )}
+
+      {/* Details Modal */}
+      {selectedScheduleId !== null && detailStudentId !== null && (
+        <StudentDetailsModal
+          scheduleId={selectedScheduleId}
+          studentId={detailStudentId}
+          onClose={() => setDetailStudentId(null)}
+        />)
+      }
     </div>
   );
 }
+

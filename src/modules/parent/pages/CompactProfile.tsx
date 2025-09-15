@@ -3,16 +3,17 @@ import { User, Mail, Phone, MapPin, Edit, Save, X, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Parent, Student } from '../data/enhancedMockData';
+import { Parent, Student } from '../api/parentService';
+import ChangePasswordCard from '../components/ChangePasswordCard';
 
 interface CompactProfileProps {
-  parentData: Parent;
-  daughters: Student[];
+  parentData: Parent | null;
+  students: Student[];
 }
 
-const CompactProfile = ({ parentData, daughters }: CompactProfileProps) => {
+const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [editedData, setEditedData] = useState<Parent>(parentData);
+  const [editedData, setEditedData] = useState<Parent | null>(parentData);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -30,11 +31,21 @@ const CompactProfile = ({ parentData, daughters }: CompactProfileProps) => {
     setIsEditing(false);
   };
 
+  if (!parentData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-gray-600">Loading profile data...</p>
+        </div>
+      </div>
+    );
+  }
+
   const handleInputChange = (field: keyof Parent, value: string) => {
-    setEditedData(prev => ({
+    setEditedData(prev => prev ? ({
       ...prev,
       [field]: value
-    }));
+    }) : null);
   };
 
   return (
@@ -167,26 +178,80 @@ const CompactProfile = ({ parentData, daughters }: CompactProfileProps) => {
         </CardContent>
       </Card>
 
-      {/* Compact Daughters Information Card */}
+      {/* Compact Students Information Card */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center space-x-2">
             <Users size={18} />
-            <span>My Daughters</span>
+            <span>My Students</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {/* Enrollment Status Summary */}
+          {students.some(s => s.enrollmentStatus === 'pending') && (
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <div className="w-6 h-6 bg-yellow-100 rounded-full flex items-center justify-center">
+                  <span className="text-yellow-600 text-sm">⏳</span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-yellow-800">
+                    {students.filter(s => s.enrollmentStatus === 'pending').length} Pending Enrollment{students.filter(s => s.enrollmentStatus === 'pending').length !== 1 ? 's' : ''}
+                  </p>
+                  <p className="text-xs text-yellow-600">
+                    Awaiting admin approval
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {students.some(s => s.enrollmentStatus === 'declined') && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <div className="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center">
+                  <span className="text-red-600 text-sm">❌</span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-red-800">
+                    {students.filter(s => s.enrollmentStatus === 'declined').length} Declined Enrollment{students.filter(s => s.enrollmentStatus === 'declined').length !== 1 ? 's' : ''}
+                  </p>
+                  <p className="text-xs text-red-600">
+                    This entry will be removed soon
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {daughters.map((daughter) => (
-              <div key={daughter.studentId} className="p-3 border rounded-lg hover:shadow-sm transition-shadow">
+            {students.map((student) => (
+              <div key={student.studentId} className={`p-3 border rounded-lg hover:shadow-sm transition-shadow ${
+                student.enrollmentStatus === 'pending' ? 'border-yellow-300 bg-yellow-50' : 
+                student.enrollmentStatus === 'declined' ? 'border-red-300 bg-red-50' : ''
+              }`}>
                 <div className="flex items-center space-x-2">
-                  <div className="w-10 h-10 bg-pink-100 rounded-full flex items-center justify-center">
-                    <User size={16} className="text-pink-600" />
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    student.enrollmentStatus === 'pending' ? 'bg-yellow-100' :
+                    student.enrollmentStatus === 'declined' ? 'bg-red-100' :
+                    'bg-pink-100'
+                  }`}>
+                    <User size={16} className={`${
+                      student.enrollmentStatus === 'pending' ? 'text-yellow-600' :
+                      student.enrollmentStatus === 'declined' ? 'text-red-600' :
+                      'text-pink-600'
+                    }`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-gray-800 text-sm truncate">{daughter.fullName}</h4>
-                    <p className="text-xs text-gray-600">Grade {daughter.gradeLevel}{daughter.section}</p>
-                    <p className="text-xs text-gray-500">ID: {daughter.studentId}</p>
+                    <h4 className="font-medium text-gray-800 text-sm truncate">{student.fullName}</h4>
+                    <p className="text-xs text-gray-600">Grade {student.gradeLevel} • Section {student.section}</p>
+                    <p className="text-xs text-gray-500">ID: {student.studentId}</p>
+                    {student.enrollmentStatus === 'pending' && (
+                      <p className="text-xs text-yellow-600 font-medium">⏳ Pending Enrollment</p>
+                    )}
+                    {student.enrollmentStatus === 'declined' && (
+                      <p className="text-xs text-red-600 font-medium">❌ Enrollment Declined</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -195,39 +260,8 @@ const CompactProfile = ({ parentData, daughters }: CompactProfileProps) => {
         </CardContent>
       </Card>
 
-      {/* Compact Account Settings Card */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Account Settings</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div>
-                <h4 className="font-medium text-gray-800 text-sm">Notifications</h4>
-                <p className="text-xs text-gray-600">Email notifications about activities</p>
-              </div>
-              <Button variant="outline" size="sm">Configure</Button>
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div>
-                <h4 className="font-medium text-gray-800 text-sm">Privacy Settings</h4>
-                <p className="text-xs text-gray-600">Data sharing preferences</p>
-              </div>
-              <Button variant="outline" size="sm">Manage</Button>
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div>
-                <h4 className="font-medium text-gray-800 text-sm">Change Password</h4>
-                <p className="text-xs text-gray-600">Update account password</p>
-              </div>
-              <Button variant="outline" size="sm">Change</Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Change Password */}
+      <ChangePasswordCard />
     </div>
   );
 };

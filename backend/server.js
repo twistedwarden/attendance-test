@@ -6,6 +6,9 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import adminRoutes from './routes/admin.js';
+import parentRoutes from './routes/parent.js';
+import teacherRoutes from './routes/teacher.js';
+import registrarRoutes from './routes/registrar.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -62,6 +65,9 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/parent', parentRoutes);
+app.use('/api/teacher', teacherRoutes);
+app.use('/api/registrar', registrarRoutes);
 
 // Serve React build (dist) in production
 if ((process.env.NODE_ENV || 'development') === 'production') {
@@ -119,11 +125,7 @@ app.use((error, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
-  console.log(`🔐 Auth API: http://localhost:${PORT}/api/auth`);
-  console.log(`👥 Users API: http://localhost:${PORT}/api/users`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 // Graceful shutdown

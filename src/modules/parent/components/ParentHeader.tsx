@@ -1,5 +1,6 @@
-import { Menu, Bell, User, LogOut } from 'lucide-react';
+import { Menu, User, LogOut } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
+import NotificationDropdown from './NotificationDropdown';
 
 interface ParentHeaderProps {
   onMobileMenuToggle: () => void;
@@ -28,9 +29,7 @@ export default function ParentHeader({ onMobileMenuToggle }: ParentHeaderProps) 
         {/* Right side actions */}
         <div className="flex items-center space-x-4">
           {/* Notifications */}
-          <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full">
-            <Bell className="h-6 w-6" />
-          </button>
+          <NotificationDropdown />
 
           {/* User menu */}
           <div className="flex items-center space-x-3">

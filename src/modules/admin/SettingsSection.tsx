@@ -1,7 +1,10 @@
 // import React from 'react';
 import { Save, Clock, MessageSquare, Shield, Wifi, Bell } from 'lucide-react';
+import AccountSettings from './components/AccountSettings';
+import { useAuth } from '../auth/AuthContext';
 
 export default function SettingsSection() {
+  const { user } = useAuth();
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -9,6 +12,9 @@ export default function SettingsSection() {
         <h2 className="text-2xl font-bold text-gray-900">System Settings</h2>
         <p className="text-gray-600">Configure attendance system preferences</p>
       </div>
+
+      {/* Account Settings */}
+      <AccountSettings showNameField={user?.role === 'admin'} />
 
       {/* Settings Sections */}
       <div className="space-y-6">

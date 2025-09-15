@@ -6,13 +6,13 @@ import AdminHeader from './AdminHeader';
 import DashboardOverview from './DashboardOverview';
 import AttendanceLog from './AttendanceLog';
 import StudentsSection from './StudentsSection';
-import GradeOverview from './GradeOverview';
+import EnrollmentsSection from './EnrollmentsSection';
+import SchedulesSection from './SchedulesSection';
 import NotificationsSection from './NotificationsSection';
 import ReportsSection from './ReportsSection';
 import DeviceStatus from './DeviceStatus';
 import SettingsSection from './SettingsSection';
 import UserAccountManagement from './UserAccountManagement';
-import RegistrationManagement from './RegistrationManagement';
 import AuditTrailSection from './AuditTrailSection';
 
 export default function AdminDashboard() {
@@ -36,12 +36,12 @@ export default function AdminDashboard() {
         return <AttendanceLog />;
       case 'students':
         return <StudentsSection />;
+      case 'enrollments':
+        return <EnrollmentsSection />;
       case 'users':
         return <UserAccountManagement />;
-      case 'registrations':
-        return <RegistrationManagement />;
-      case 'grades':
-        return <GradeOverview />;
+      case 'schedules':
+        return <SchedulesSection />;
       case 'notifications':
         return <NotificationsSection />;
       case 'reports':

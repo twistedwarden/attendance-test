@@ -3,16 +3,52 @@ import { Clock, Calendar, CheckCircle, XCircle, AlertCircle } from 'lucide-react
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import ModernAttendanceSection from '../components/ModernAttendanceSection';
 import DateFilter from '../components/DateFilter';
-import { mockAttendanceData, calculateAttendanceStats, Student, AttendanceRecord } from '../data/enhancedMockData';
+import { 
+  ParentService,
+  Student,
+  AttendanceRecord,
+  AttendanceStats
+} from '../api/parentService';
 
 interface CompactAttendanceProps {
   selectedDaughter: Student;
 }
 
 const CompactAttendance = ({ selectedDaughter }: CompactAttendanceProps) => {
-  const [filteredAttendance, setFilteredAttendance] = useState<AttendanceRecord[]>(
-    selectedDaughter ? mockAttendanceData[selectedDaughter.studentId] || [] : []
-  );
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [filteredAttendance, setFilteredAttendance] = useState<AttendanceRecord[]>([]);
+  const [attendanceStats, setAttendanceStats] = useState<AttendanceStats>({ todayStatus: 'No Record', weeklyPercentage: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedDaughter) {
+      loadStudentData();
+    }
+  }, [selectedDaughter]);
+
+  const loadStudentData = async () => {
+    if (!selectedDaughter) return;
+    
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const [records, stats] = await Promise.all([
+        ParentService.getStudentAttendance(selectedDaughter.studentId),
+        ParentService.getStudentAttendanceStats(selectedDaughter.studentId)
+      ]);
+      
+      setAttendanceRecords(records);
+      setFilteredAttendance(records);
+      setAttendanceStats(stats);
+    } catch (error) {
+      console.error('Error loading student data:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (!selectedDaughter) {
     return (
@@ -26,25 +62,51 @@ const CompactAttendance = ({ selectedDaughter }: CompactAttendanceProps) => {
     );
   }
 
-  const studentAttendance = mockAttendanceData[selectedDaughter.studentId] || [];
-  const attendanceStats = calculateAttendanceStats(filteredAttendance);
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <Clock size={48} className="mx-auto mb-4 text-gray-300 animate-spin" />
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Loading...</h2>
+          <p className="text-gray-600">Fetching attendance data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <XCircle size={48} className="mx-auto mb-4 text-red-300" />
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Error Loading Data</h2>
+          <p className="text-gray-600">{error}</p>
+          <button 
+            onClick={loadStudentData}
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Calculate detailed statistics
-  const totalDays = studentAttendance.length;
-  const presentDays = studentAttendance.filter(record => record.status === 'Present').length;
-  const lateDays = studentAttendance.filter(record => record.status === 'Late').length;
-  const absentDays = studentAttendance.filter(record => record.status === 'Absent').length;
-  const excusedDays = studentAttendance.filter(record => record.status === 'Excused').length;
+  const totalDays = filteredAttendance.length;
+  const presentDays = filteredAttendance.filter(record => record.status === 'Present').length;
+  const lateDays = filteredAttendance.filter(record => record.status === 'Late').length;
+  const excusedDays = filteredAttendance.filter(record => record.status === 'Excused').length;
 
   const attendancePercentage = totalDays > 0 ? Math.round(((presentDays + lateDays) / totalDays) * 100) : 0;
 
   const handleDateRangeChange = (dateRange: { from: Date; to: Date } | null) => {
     if (!dateRange) {
-      setFilteredAttendance(studentAttendance);
+      setFilteredAttendance(attendanceRecords);
       return;
     }
 
-    const filtered = studentAttendance.filter(record => {
+    const filtered = attendanceRecords.filter(record => {
       const recordDate = new Date(record.date);
       return recordDate >= dateRange.from && recordDate <= dateRange.to;
     });
@@ -52,10 +114,6 @@ const CompactAttendance = ({ selectedDaughter }: CompactAttendanceProps) => {
     setFilteredAttendance(filtered);
   };
 
-  // Update filtered attendance when selected daughter changes
-  useEffect(() => {
-    setFilteredAttendance(studentAttendance);
-  }, [selectedDaughter]);
 
   return (
     <div className="space-y-6">
@@ -118,11 +176,11 @@ const CompactAttendance = ({ selectedDaughter }: CompactAttendanceProps) => {
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-gray-600 flex items-center">
               <XCircle size={14} className="mr-1" />
-              Absent
+              Late
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold text-red-600">{absentDays}</div>
+            <div className="text-xl font-bold text-red-600">{lateDays}</div>
             <p className="text-xs text-gray-500">Days</p>
           </CardContent>
         </Card>
@@ -160,7 +218,7 @@ const CompactAttendance = ({ selectedDaughter }: CompactAttendanceProps) => {
                   <span className={`font-medium ${
                     attendanceStats.todayStatus === 'Present' ? 'text-green-600' :
                     attendanceStats.todayStatus === 'Late' ? 'text-yellow-600' :
-                    attendanceStats.todayStatus === 'Absent' ? 'text-red-600' : 'text-blue-600'
+                    attendanceStats.todayStatus === 'Late' ? 'text-red-600' : 'text-blue-600'
                   }`}>
                     {attendanceStats.todayStatus}
                   </span>

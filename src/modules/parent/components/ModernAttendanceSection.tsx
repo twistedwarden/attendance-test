@@ -11,8 +11,6 @@ const ModernAttendanceSection = ({ attendanceRecords }: ModernAttendanceSectionP
     switch (status) {
       case 'Present':
         return <CheckCircle className="text-green-600" size={18} />;
-      case 'Absent':
-        return <XCircle className="text-red-600" size={18} />;
       case 'Late':
         return <AlertCircle className="text-yellow-600" size={18} />;
       case 'Excused':
@@ -26,8 +24,6 @@ const ModernAttendanceSection = ({ attendanceRecords }: ModernAttendanceSectionP
     switch (status) {
       case 'Present':
         return 'bg-green-50 text-green-700 border-green-200';
-      case 'Absent':
-        return 'bg-red-50 text-red-700 border-red-200';
       case 'Late':
         return 'bg-yellow-50 text-yellow-700 border-yellow-200';
       case 'Excused':

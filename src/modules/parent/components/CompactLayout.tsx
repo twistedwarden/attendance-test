@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import ParentHeader from './ParentHeader';
-import { Student } from '../data/enhancedMockData';
+import { Student, Parent } from '../api/parentService';
 
 interface CompactLayoutProps {
-  selectedDaughter: Student;
-  onDaughterChange: (daughter: Student) => void;
-  daughters: Student[];
+  selectedStudent: Student | null;
+  onStudentChange: (student: Student) => void;
+  students: Student[];
+  parent: Parent | null;
+  onEnrollNewStudent?: () => void;
 }
 
-const CompactLayout = ({ selectedDaughter, onDaughterChange, daughters }: CompactLayoutProps) => {
+const CompactLayout = ({ selectedStudent, onStudentChange, students, parent, onEnrollNewStudent }: CompactLayoutProps) => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const handleMobileMenuToggle = () => {
@@ -25,11 +27,13 @@ const CompactLayout = ({ selectedDaughter, onDaughterChange, daughters }: Compac
     <div className="flex h-screen overflow-hidden">
       {/* Single Sidebar Component */}
       <Sidebar
-        selectedDaughter={selectedDaughter}
-        onDaughterChange={onDaughterChange}
-        daughters={daughters}
+        selectedStudent={selectedStudent}
+        onStudentChange={onStudentChange}
+        students={students}
+        parent={parent}
         isMobileOpen={isMobileOpen}
         onMobileClose={handleMobileClose}
+        onEnrollNewStudent={onEnrollNewStudent}
       />
       
       {/* Main Content */}

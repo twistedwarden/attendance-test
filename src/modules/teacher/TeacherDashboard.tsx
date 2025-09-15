@@ -6,6 +6,7 @@ import TeacherAttendanceView from './TeacherAttendanceView';
 import TeacherStudentsView from './TeacherStudentsView';
 import TeacherReportsView from './TeacherReportsView';
 import TeacherNotificationsView from './TeacherNotificationsView';
+import AccountSettings from '../admin/components/AccountSettings';
 
 export default function TeacherDashboard() {
   const { user } = useAuth();
@@ -30,6 +31,8 @@ export default function TeacherDashboard() {
         return <TeacherReportsView />;
       case 'notifications':
         return <TeacherNotificationsView />;
+      case 'settings':
+        return <AccountSettings showNameField={false} />;
       default:
         return <TeacherAttendanceView />;
     }

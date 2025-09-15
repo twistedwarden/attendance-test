@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { findUserById } from '../config/database.js';
+import { findUserById, pool } from '../config/database.js';
 
 export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -23,11 +23,24 @@ export const authenticateToken = async (req, res, next) => {
       });
     }
 
+    // Get additional user data based on role
+    let additionalData = {};
+    if (user.Role.toLowerCase() === 'parent') {
+      const [parentData] = await pool.execute(
+        'SELECT ParentID FROM parent WHERE UserID = ?',
+        [user.UserID]
+      );
+      if (parentData.length > 0) {
+        additionalData.parentId = parentData[0].ParentID;
+      }
+    }
+
     // Format user data for request
     req.user = {
       userId: user.UserID,
       email: user.Username,
-      role: user.Role.toLowerCase()
+      role: user.Role.toLowerCase(),
+      ...additionalData
     };
     next();
   } catch (error) {

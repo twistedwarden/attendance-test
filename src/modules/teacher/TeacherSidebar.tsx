@@ -33,6 +33,12 @@ const menuItems = [
     label: 'Messages',
     icon: MessageSquare,
     description: 'Parent Communication'
+  },
+  {
+    id: 'settings',
+    label: 'Account Settings',
+    icon: Fingerprint,
+    description: 'Manage your account'
   }
 ];
 

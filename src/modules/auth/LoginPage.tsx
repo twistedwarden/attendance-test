@@ -1,108 +1,91 @@
 import { useState } from 'react';
-import { GraduationCap, User, Lock, Eye, EyeOff } from 'lucide-react';
+import { User, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from './AuthContext';
+import { Link } from 'react-router-dom';
 
 export default function LoginPage() {
-  const { login, isLoading, startOtpLogin, verifyOtp } = useAuth();
+  const { isLoading, startOtpLogin, verifyOtp, otpPhase, otpUserId, resetOtpPhase } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [otpPhase, setOtpPhase] = useState(false);
   const [otp, setOtp] = useState('');
-  const [otpUserId, setOtpUserId] = useState<number | null>(null);
+  // Use DOM-injected toast to avoid losing message on re-render
+  const showGlobalToast = (message: string) => {
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.top = '16px';
+    container.style.right = '16px';
+    container.style.zIndex = '99999';
+    container.style.pointerEvents = 'none';
+
+    const toastEl = document.createElement('div');
+    toastEl.textContent = message;
+    toastEl.className = 'bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-medium';
+    container.appendChild(toastEl);
+    document.body.appendChild(container);
+    window.setTimeout(() => {
+      container.remove();
+    }, 3000);
+  };
+
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    
 
     try {
       if (!otpPhase) {
-        if (startOtpLogin) {
-          const dataUserId = await startOtpLogin(email, password);
-          if (dataUserId) {
-            setOtpUserId(dataUserId);
-            setOtpPhase(true);
-            return;
-          }
-          setError('Failed to send OTP.');
-          return;
+        const result = await startOtpLogin?.(email, password);
+        if (!result) {
+          showGlobalToast('Invalid email or password. Please double-check and try again.');
         }
-        const user = await login(email, password);
-        if (!user) setError('Invalid email or password');
       } else {
         if (!otpUserId || !verifyOtp) {
-          setError('Missing OTP session.');
+          showGlobalToast('Missing OTP session. Please try signing in again.');
           return;
         }
         const user = await verifyOtp(otpUserId, otp);
-        if (!user) setError('Invalid or expired OTP');
+        if (!user) {
+          showGlobalToast('Invalid or expired OTP.');
+        }
       }
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Login failed. Please try again.');
+      const message = error instanceof Error ? error.message : 'Unable to sign in right now. Please try again.';
+      showGlobalToast(message);
     }
   };
 
-  const handleDemoLogin = async (userType: 'admin' | 'teacher' | 'parent') => {
-    setError('');
-    
-    // Demo credentials from backend
-    const demoCredentials = {
-      admin: { email: 'admin@foothills.edu', password: 'admin123' },
-      teacher: { email: 'sarah.johnson@foothills.edu', password: 'teacher123' },
-      parent: { email: 'sarah.johnson@email.com', password: 'parent123' }
-    };
-
-    const credentials = demoCredentials[userType];
-    setEmail(credentials.email);
-    setPassword(credentials.password);
-
-    try {
-      const user = await login(credentials.email, credentials.password);
-      if (!user) {
-        setError('Demo login failed. Please try again.');
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Demo login failed. Please try again.');
-    }
-  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="max-w-md w-full space-y-8">
+    <div className="h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto">
+      <div className="max-w-md w-full space-y-6">
         {/* Header */}
         <div className="text-center">
-          <div className="mx-auto bg-blue-600 p-3 rounded-full w-16 h-16 flex items-center justify-center mb-4">
-            <GraduationCap className="h-8 w-8 text-white" />
-          </div>
-          <h2 className="text-3xl font-bold text-gray-900">Welcome Back</h2>
-          <p className="mt-2 text-gray-600">Foothills Christian School</p>
-          <p className="text-sm text-gray-500">Student Attendance System</p>
+            <img src="/fcsv3.png" alt="Foothills Christian School" className="h-32 mx-auto" />
+          <h2 className="text-3xl font-bold text-gray-900 mb-1">Welcome Back</h2>
+          <p className="text-base text-gray-700 font-medium">Foothills Christian School</p>
         </div>
 
         {/* Login Form */}
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
+        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
+          <form onSubmit={handleSubmit} className="space-y-5">
+
 
             {!otpPhase && (
               <>
                 <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
                     Email Address
                   </label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                    <User className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
                     <input
                       id="email"
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 focus:bg-white"
                       placeholder="Enter your email"
                       required
                     />
@@ -110,24 +93,24 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
                     Password
                   </label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                    <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
                     <input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 focus:bg-white"
                       placeholder="Enter your password"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200"
                     >
                       {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
@@ -138,19 +121,37 @@ export default function LoginPage() {
 
             {otpPhase && (
               <div>
-                <label htmlFor="otp" className="block text-sm font-medium text-gray-700 mb-2">
-                  Enter OTP sent to your email
-                </label>
-                <div className="relative">
-                  <input
-                    id="otp"
-                    type="text"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    className="w-full pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Enter OTP"
-                    required
-                  />
+                <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-200">
+                  <p className="text-sm text-blue-800 mb-2 font-medium">
+                    We've sent a verification code to <strong className="text-blue-900">{email}</strong>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetOtpPhase?.();
+                      setOtp('');
+                    }}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors duration-200 flex items-center gap-1"
+                  >
+                    ← Back to login
+                  </button>
+                </div>
+                <div>
+                  <label htmlFor="otp" className="block text-sm font-semibold text-gray-700 mb-2">
+                    Enter OTP sent to your email
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="otp"
+                      type="text"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 focus:bg-white text-center text-lg font-mono tracking-widest"
+                      placeholder="Enter OTP"
+                      required
+                      maxLength={6}
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -158,44 +159,32 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-3 px-6 rounded-xl font-semibold text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none"
             >
-              {isLoading ? (otpPhase ? 'Verifying...' : 'Sending OTP...') : (otpPhase ? 'Verify OTP' : 'Sign In')}
+              {isLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  {otpPhase ? 'Verifying...' : 'Sending OTP...'}
+                </div>
+              ) : (
+                otpPhase ? 'Verify OTP' : 'Sign In'
+              )}
             </button>
           </form>
 
-          {/* Demo Login Buttons
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <p className="text-sm text-gray-600 text-center mb-4">Demo Accounts:</p>
-            <div className="space-y-2">
-              <button
-                onClick={() => handleDemoLogin('admin')}
-                disabled={isLoading}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Login as Admin
-              </button>
-              <button
-                onClick={() => handleDemoLogin('teacher')}
-                disabled={isLoading}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Login as Teacher
-              </button>
-              <button
-                onClick={() => handleDemoLogin('parent')}
-                disabled={isLoading}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Login as Parent
-              </button>
-            </div>
-          </div> */}
         </div>
 
+
         {/* Footer */}
-        <div className="text-center text-sm text-gray-500">
-          <p>© 2024 Foothills Christian School. All rights reserved.</p>
+        <div className="text-center space-y-2">
+          <p className="text-sm text-gray-600">
+            Don't have an account?
+            {' '}
+            <Link to="/parent-register" className="font-semibold text-blue-600 hover:text-blue-700">
+              Register as Parent
+            </Link>
+          </p>
+          <p className="text-xs text-gray-500">© 2024 Foothills Christian School. All rights reserved.</p>
         </div>
       </div>
     </div>

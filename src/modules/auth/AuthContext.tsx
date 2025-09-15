@@ -8,9 +8,11 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true); // Start with loading true
+  const [otpPhase, setOtpPhase] = useState(false);
+  const [otpUserId, setOtpUserId] = useState<number | null>(null);
 
   useEffect(() => {
     // Check for existing session on app load
@@ -74,7 +76,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setIsLoading(true);
     try {
       const res = await AuthService.startOtpLogin({ email, password });
+      if (res) {
+        setOtpUserId(res.userId);
+        setOtpPhase(true);
+      }
       return res ? res.userId : null;
+    } catch (error) {
+      // Do not rethrow for expected validation/credential errors
+      console.error('AuthContext: OTP login error:', error);
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -86,12 +96,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const userData = await AuthService.verifyOtp(userId, otp);
       if (userData) {
         setUser(userData);
+        setOtpPhase(false);
+        setOtpUserId(null);
         return userData;
       }
       return null;
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const resetOtpPhase = () => {
+    setOtpPhase(false);
+    setOtpUserId(null);
   };
 
   const value: AuthContextType = {
@@ -101,6 +118,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isLoading,
     startOtpLogin,
     verifyOtp,
+    otpPhase,
+    otpUserId,
+    resetOtpPhase,
   };
 
   return (
@@ -108,12 +128,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
-export const useAuth = (): AuthContextType => {
+function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}; 
+}
+
+export default AuthProvider;
+export { useAuth }; 

@@ -4,58 +4,105 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import ModernAttendanceSection from '../components/ModernAttendanceSection';
 import DateFilter from '../components/DateFilter';
 import { 
-  mockAttendanceData, 
-  calculateAttendanceStats,
+  ParentService,
   Student,
-  AttendanceRecord
-} from '../data/enhancedMockData';
+  AttendanceRecord,
+  AttendanceStats
+} from '../api/parentService';
 
 interface CompactDashboardProps {
-  selectedDaughter: Student;
+  selectedStudent: Student | null;
 }
 
-const CompactDashboard = ({ selectedDaughter }: CompactDashboardProps) => {
-  const [filteredAttendance, setFilteredAttendance] = useState<AttendanceRecord[]>(
-    selectedDaughter ? mockAttendanceData[selectedDaughter.studentId] || [] : []
-  );
+const CompactDashboard = ({ selectedStudent }: CompactDashboardProps) => {
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [attendanceStats, setAttendanceStats] = useState<AttendanceStats>({ todayStatus: 'No Record', weeklyPercentage: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Get data for selected daughter
-  const studentAttendance = selectedDaughter ? mockAttendanceData[selectedDaughter.studentId] || [] : [];
-  
-  // Calculate statistics
-  const attendanceStats = calculateAttendanceStats(filteredAttendance);
+  useEffect(() => {
+    if (selectedStudent) {
+      loadStudentData();
+    }
+  }, [selectedStudent]);
+
+  const loadStudentData = async () => {
+    if (!selectedStudent) return;
+    
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const [records, stats] = await Promise.all([
+        ParentService.getStudentAttendance(selectedStudent.studentId),
+        ParentService.getStudentAttendanceStats(selectedStudent.studentId)
+      ]);
+      
+      setAttendanceRecords(records);
+      setAttendanceStats(stats);
+    } catch (error) {
+      console.error('Error loading student data:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Calculate additional stats
-  const totalDays = studentAttendance.length;
-  const presentDays = studentAttendance.filter(record => record.status === 'Present').length;
-  const lateDays = studentAttendance.filter(record => record.status === 'Late').length;
+  const totalDays = attendanceRecords.length;
+  const presentDays = attendanceRecords.filter(record => record.status === 'Present').length;
+  const lateDays = attendanceRecords.filter(record => record.status === 'Late').length;
   const attendancePercentage = totalDays > 0 ? Math.round(((presentDays + lateDays) / totalDays) * 100) : 0;
 
   const handleDateRangeChange = (dateRange: { from: Date; to: Date } | null) => {
-    if (!dateRange || !selectedDaughter) {
-      setFilteredAttendance(studentAttendance);
+    if (!dateRange || !selectedStudent) {
       return;
     }
 
-    const filtered = studentAttendance.filter(record => {
+    const filtered = attendanceRecords.filter(record => {
       const recordDate = new Date(record.date);
       return recordDate >= dateRange.from && recordDate <= dateRange.to;
     });
     
-    setFilteredAttendance(filtered);
+    setAttendanceRecords(filtered);
   };
 
-  // Update filtered attendance when selected daughter changes
-  useEffect(() => {
-    setFilteredAttendance(studentAttendance);
-  }, [selectedDaughter]);
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading attendance data...</p>
+        </div>
+      </div>
+    );
+  }
 
-  if (!selectedDaughter) {
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg max-w-md">
+            <p className="font-medium">Error loading data</p>
+            <p className="text-sm mt-1">{error}</p>
+            <button 
+              onClick={loadStudentData}
+              className="mt-3 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!selectedStudent) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome to Parent Portal</h2>
-          <p className="text-gray-600">Please select a daughter from the sidebar to view her information.</p>
+          <p className="text-gray-600">Please select a student from the sidebar to view their information.</p>
         </div>
       </div>
     );
@@ -67,8 +114,8 @@ const CompactDashboard = ({ selectedDaughter }: CompactDashboardProps) => {
       <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-3 rounded-lg shadow-lg">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold">{selectedDaughter.fullName}</h1>
-            <p className="text-blue-100 text-sm">Grade {selectedDaughter.gradeLevel} • Section {selectedDaughter.section}</p>
+            <h1 className="text-lg font-bold">{selectedStudent.fullName}</h1>
+            <p className="text-blue-100 text-sm">Grade {selectedStudent.gradeLevel} • Section {selectedStudent.section}</p>
           </div>
           <div className="text-right">
             <p className="text-blue-100 text-sm">{new Date().toLocaleDateString()}</p>
@@ -173,7 +220,7 @@ const CompactDashboard = ({ selectedDaughter }: CompactDashboardProps) => {
           </h2>
           <DateFilter onDateRangeChange={handleDateRangeChange} />
         </div>
-        <ModernAttendanceSection attendanceRecords={filteredAttendance} />
+        <ModernAttendanceSection attendanceRecords={attendanceRecords} />
       </div>
     </div>
   );
