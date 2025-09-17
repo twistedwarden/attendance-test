@@ -124,10 +124,6 @@ export default function NotificationsSection() {
           <h2 className="text-2xl font-bold text-gray-900">Parent Notifications</h2>
           <p className="text-gray-600">Manage and monitor parent communication</p>
         </div>
-        <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
-          <Send className="h-4 w-4" />
-          <span>Send Bulk Message</span>
-        </button>
       </div>
 
       {/* Stats Cards */}

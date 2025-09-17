@@ -144,7 +144,7 @@ export default function TeacherAttendanceView() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Present</p>
+              <p className="text-sm font-medium text-gray-600">Time in</p>
               <p className="text-2xl font-bold text-green-600">{presentCount}</p>
             </div>
             <CheckCircle className="h-8 w-8 text-green-500" />
@@ -209,7 +209,7 @@ export default function TeacherAttendanceView() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="all">All Status</option>
-              <option value="Present">Present</option>
+              <option value="Present">Time in</option>
               <option value="Late">Late</option>
               <option value="Absent">Absent</option>
               <option value="Excused">Excused</option>
@@ -262,7 +262,7 @@ export default function TeacherAttendanceView() {
                     className="px-2 py-1 border border-gray-300 rounded-md text-sm"
                   >
                     <option value="">—</option>
-                    <option value="Present">Present</option>
+                    <option value="Present">Time in</option>
                     <option value="Late">Late</option>
                     <option value="Excused">Excused</option>
                     <option value="Absent">Absent</option>

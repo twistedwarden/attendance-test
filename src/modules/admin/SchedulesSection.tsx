@@ -92,7 +92,7 @@ export default function SchedulesSection() {
   // Student assignment modal states
   const [assignmentCreateOpen, setAssignmentCreateOpen] = useState(false);
   const [formStudentId, setFormStudentId] = useState<number | null>(null);
-  const [formScheduleId, setFormScheduleId] = useState<number | null>(null);
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState<number[]>([]);
   const [students, setStudents] = useState<{id: number, name: string, gradeLevel: string, section: string}[]>([]);
   const [availableSchedules, setAvailableSchedules] = useState<ScheduleVM[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<{id: number, name: string, gradeLevel: string, section: string} | null>(null);
@@ -750,27 +750,31 @@ export default function SchedulesSection() {
   };
 
   const submitAssignment = async () => {
-    if (!formStudentId || !formScheduleId) {
-      toast.error('Please select both student and schedule');
+    if (!formStudentId || selectedScheduleIds.length === 0) {
+      toast.error('Please select a student and at least one schedule');
       return;
     }
 
     try {
-      await AdminService.assignSchedule({
+      // Assign multiple schedules
+      const assignments = selectedScheduleIds.map(scheduleId => ({
         studentId: formStudentId,
-        scheduleId: formScheduleId
-      });
-      toast.success('Schedule assigned successfully');
+        scheduleId: scheduleId
+      }));
+
+      await AdminService.assignMultipleSchedules(assignments);
+      toast.success(`${selectedScheduleIds.length} schedule(s) assigned successfully`);
       setAssignmentCreateOpen(false);
+      setSelectedScheduleIds([]);
       loadStudentAssignments(); // Reload the assignments
     } catch (error: any) {
-      toast.error(error.message || 'Failed to assign schedule');
+      toast.error(error.message || 'Failed to assign schedules');
     }
   };
 
   const openAssignmentCreate = async () => {
     setFormStudentId(null);
-    setFormScheduleId(null);
+    setSelectedScheduleIds([]);
     setSelectedStudent(null);
     setStudentSearchValue('');
     setAssignmentCreateOpen(true);
@@ -1869,31 +1873,54 @@ export default function SchedulesSection() {
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Schedule {selectedStudent ? `(Filtered for Grade ${selectedStudent.gradeLevel})` : ''}
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Schedules {selectedStudent ? `(Filtered for Grade ${selectedStudent.gradeLevel})` : ''}
             </label>
-            <select 
-              value={formScheduleId || ''} 
-              onChange={(e) => setFormScheduleId(e.target.value ? Number(e.target.value) : null)} 
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              disabled={!selectedStudent}
-            >
-              <option value="">
-                {selectedStudent ? 'Select a schedule' : 'Please select a student first'}
-              </option>
-              {filteredSchedules.map(schedule => (
-                <option key={schedule.id} value={schedule.id}>
-                  {schedule.subject} - {schedule.teacher} - {schedule.days.join(', ')} {schedule.startTime}-{schedule.endTime}
-                  {schedule.gradeLevel && ` (Grade ${schedule.gradeLevel})`}
-                  {schedule.section && ` (${schedule.section})`}
-                </option>
-              ))}
-            </select>
+            <div className="border border-gray-300 rounded-lg max-h-60 overflow-y-auto">
+              {selectedStudent ? (
+                filteredSchedules.length > 0 ? (
+                  filteredSchedules.map(schedule => (
+                    <label key={schedule.id} className="flex items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0">
+                      <input
+                        type="checkbox"
+                        className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        checked={selectedScheduleIds.includes(schedule.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedScheduleIds(prev => [...prev, schedule.id]);
+                          } else {
+                            setSelectedScheduleIds(prev => prev.filter(id => id !== schedule.id));
+                          }
+                        }}
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">
+                          {schedule.subject} - {schedule.teacher}
+                        </div>
+                        <div className="text-gray-600">
+                          {schedule.days.join(', ')} {schedule.startTime}-{schedule.endTime}
+                          {schedule.gradeLevel && ` (Grade ${schedule.gradeLevel})`}
+                          {schedule.section && ` (${schedule.section})`}
+                        </div>
+                      </div>
+                    </label>
+                  ))
+                ) : (
+                  <div className="px-3 py-4 text-sm text-amber-600 bg-amber-50">
+                    No schedules available for Grade {selectedStudent.gradeLevel}. 
+                    You may need to create schedules for this grade level first.
+                  </div>
+                )
+              ) : (
+                <div className="px-3 py-4 text-sm text-gray-500">
+                  Please select a student first to see available schedules.
+                </div>
+              )}
+            </div>
             
-            {selectedStudent && filteredSchedules.length === 0 && (
-              <div className="mt-2 text-sm text-amber-600 bg-amber-50 p-2 rounded">
-                No schedules available for Grade {selectedStudent.gradeLevel}. 
-                You may need to create schedules for this grade level first.
+            {selectedScheduleIds.length > 0 && (
+              <div className="mt-2 text-sm text-blue-600">
+                {selectedScheduleIds.length} schedule(s) selected
               </div>
             )}
           </div>

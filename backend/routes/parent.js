@@ -49,8 +49,10 @@ router.get('/students', authenticateToken, requireRole(['parent']), async (req, 
     }
 
     const [rows] = await pool.execute(
-      `SELECT s.StudentID, s.FullName, s.GradeLevel, s.SectionID, s.ParentID, s.Status, s.EnrollmentStatus
+      `SELECT s.StudentID, s.FullName, s.GradeLevel, s.SectionID, s.ParentID, s.Status, s.EnrollmentStatus,
+              sec.SectionName, sec.Description as SectionDescription
        FROM studentrecord s
+       LEFT JOIN section sec ON sec.SectionID = s.SectionID
        WHERE s.ParentID = ?
        ORDER BY s.StudentID`,
       [parentId]
@@ -60,7 +62,7 @@ router.get('/students', authenticateToken, requireRole(['parent']), async (req, 
       studentId: student.StudentID,
       fullName: student.FullName,
       gradeLevel: student.GradeLevel || '',
-      section: '',
+      section: student.SectionName || '',
       sectionId: student.SectionID ?? null,
       parentId: student.ParentID,
       status: student.Status,
@@ -102,11 +104,12 @@ router.get('/attendance/:studentId', authenticateToken, requireRole(['parent']),
       [studentId, parseInt(limit)]
     );
 
-    // Get subject attendance records
+    // Get subject attendance records with actual time data
     const [subjectAttendance] = await pool.execute(
       `SELECT sa.SubjectAttendanceID as attendanceId, sa.StudentID as studentId, 
-              sa.Date as date, NULL as timeIn, NULL as timeOut, sa.Status as status
+              sa.Date as date, al.TimeIn as timeIn, al.TimeOut as timeOut, sa.Status as status
        FROM subjectattendance sa
+       LEFT JOIN attendancelog al ON al.StudentID = sa.StudentID AND al.Date = sa.Date
        WHERE sa.StudentID = ?
        ORDER BY sa.Date DESC
        LIMIT ?`,
@@ -326,6 +329,107 @@ router.post('/notifications/mark-all-read', authenticateToken, requireRole(['par
     return res.json({ success: true, message: 'All notifications marked as read' });
   } catch (error) {
     console.error('Mark all notifications as read error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Get subject-based attendance for a specific student
+router.get('/subject-attendance/:studentId', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { limit = 30 } = req.query;
+    const parentId = req.user.parentId;
+
+    // Verify the student belongs to this parent
+    const [studentCheck] = await pool.execute(
+      'SELECT StudentID FROM studentrecord WHERE StudentID = ? AND ParentID = ?',
+      [studentId, parentId]
+    );
+
+    if (studentCheck.length === 0) {
+      return res.status(403).json({ success: false, message: 'Access denied to this student' });
+    }
+
+    // Get subject attendance records with subject and schedule information
+    const [subjectAttendance] = await pool.execute(
+      `SELECT 
+        sa.SubjectAttendanceID as attendanceId,
+        sa.StudentID as studentId,
+        sa.Date as date,
+        al.TimeIn as timeIn,
+        al.TimeOut as timeOut,
+        sa.Status as status,
+        sa.CreatedAt as createdAt,
+        s.SubjectID as subjectId,
+        s.SubjectName as subjectName,
+        ts.ScheduleID as scheduleId,
+        ts.TimeIn as scheduleTimeIn,
+        ts.TimeOut as scheduleTimeOut,
+        ts.DayOfWeek as dayOfWeek,
+        COALESCE(ts.GracePeriod, 15) as gracePeriod,
+        COALESCE(tr.FullName, ua.Username, 'Unknown Teacher') as teacherName
+       FROM subjectattendance sa
+       LEFT JOIN attendancelog al ON al.StudentID = sa.StudentID AND al.Date = sa.Date
+       LEFT JOIN subject s ON s.SubjectID = sa.SubjectID
+       LEFT JOIN teacherschedule ts ON ts.SubjectID = sa.SubjectID
+       LEFT JOIN teacherrecord tr ON tr.UserID = ts.TeacherID
+       LEFT JOIN useraccount ua ON ua.UserID = ts.TeacherID
+       WHERE sa.StudentID = ?
+       ORDER BY sa.Date DESC, sa.CreatedAt DESC
+       LIMIT ?`,
+      [studentId, parseInt(limit)]
+    );
+
+    // Group attendance by subject
+    const subjectGroups = subjectAttendance.reduce((acc, record) => {
+      const subjectKey = record.subjectId || 'unknown';
+      if (!acc[subjectKey]) {
+        acc[subjectKey] = {
+          subjectId: record.subjectId,
+          subjectName: record.subjectName || 'Unknown Subject',
+          teacherName: record.teacherName || 'Unknown Teacher',
+          scheduleTimeIn: record.scheduleTimeIn,
+          scheduleTimeOut: record.scheduleTimeOut,
+          dayOfWeek: record.dayOfWeek,
+          gracePeriod: record.gracePeriod,
+          attendanceRecords: []
+        };
+      }
+      acc[subjectKey].attendanceRecords.push({
+        attendanceId: record.attendanceId,
+        date: record.date,
+        timeIn: record.timeIn,
+        timeOut: record.timeOut,
+        status: record.status,
+        createdAt: record.createdAt
+      });
+      return acc;
+    }, {});
+
+    // Calculate subject statistics
+    const subjectStats = Object.values(subjectGroups).map(subject => {
+      const records = subject.attendanceRecords;
+      const totalDays = records.length;
+      const presentDays = records.filter(r => r.status === 'Present').length;
+      const lateDays = records.filter(r => r.status === 'Late').length;
+      const absentDays = records.filter(r => r.status === 'Absent').length;
+      const attendanceRate = totalDays > 0 ? Math.round(((presentDays + lateDays) / totalDays) * 100) : 0;
+      
+      return {
+        ...subject,
+        stats: {
+          totalDays,
+          presentDays,
+          lateDays,
+          absentDays,
+          attendanceRate
+        }
+      };
+    });
+
+    return res.json({ success: true, data: subjectStats });
+  } catch (error) {
+    console.error('Get subject attendance error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });

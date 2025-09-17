@@ -150,7 +150,7 @@ const CompactAttendance = ({ selectedDaughter }: CompactAttendanceProps) => {
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-gray-600 flex items-center">
               <CheckCircle size={14} className="mr-1" />
-              Present
+              Time in
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -218,7 +218,7 @@ const CompactAttendance = ({ selectedDaughter }: CompactAttendanceProps) => {
                   <span className={`font-medium ${
                     attendanceStats.todayStatus === 'Present' ? 'text-green-600' :
                     attendanceStats.todayStatus === 'Late' ? 'text-yellow-600' :
-                    attendanceStats.todayStatus === 'Late' ? 'text-red-600' : 'text-blue-600'
+                    attendanceStats.todayStatus === 'Absent' ? 'text-red-600' : 'text-blue-600'
                   }`}>
                     {attendanceStats.todayStatus}
                   </span>

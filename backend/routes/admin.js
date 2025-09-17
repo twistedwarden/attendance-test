@@ -1836,10 +1836,10 @@ router.post('/enrollments/:id/approve', async (req, res) => {
         try {
             await connection.beginTransaction();
 
-            // Update student enrollment status
+            // Update student enrollment status and set status to Active
             await connection.execute(
-                'UPDATE studentrecord SET EnrollmentStatus = ?, EnrollmentDate = NOW() WHERE StudentID = ?',
-                ['approved', id]
+                'UPDATE studentrecord SET EnrollmentStatus = ?, Status = ?, EnrollmentDate = NOW() WHERE StudentID = ?',
+                ['approved', 'Active', id]
             );
 
             // Create or update enrollment review record
@@ -1904,22 +1904,22 @@ router.post('/enrollments/:id/approve', async (req, res) => {
                     
                     // Check if assignment already exists
                     const [existing] = await connection.execute(
-                        'SELECT StudentSubjectID FROM studentsubject WHERE StudentID = ? AND SubjectID = ? AND TeacherID = ?',
-                        [id, scheduleData.SubjectID, scheduleData.TeacherID]
+                        'SELECT StudentScheduleID FROM studentschedule WHERE StudentID = ? AND ScheduleID = ?',
+                        [id, scheduleId]
                     );
                     
                     if (existing.length === 0) {
                         // Create the assignment
                         await connection.execute(
-                            'INSERT INTO studentsubject (StudentID, SubjectID, TeacherID) VALUES (?, ?, ?)',
-                            [id, scheduleData.SubjectID, scheduleData.TeacherID]
+                            'INSERT INTO studentschedule (StudentID, ScheduleID, CreatedBy) VALUES (?, ?, ?)',
+                            [id, scheduleId, req.user.userId]
                         );
                         
                         // Create audit trail for schedule assignment
                         await createAuditTrail({
                             userId: req.user.userId,
                             action: 'Assign schedule to student',
-                            tableAffected: 'studentsubject',
+                            tableAffected: 'studentschedule',
                             recordId: null,
                             details: `Assigned schedule ${scheduleData.SubjectName} (${scheduleData.TeacherName}) to student during enrollment approval`
                         });
@@ -2505,7 +2505,7 @@ router.post('/student-schedules', async (req, res) => {
         );
 
         // Create audit trail
-        await createAuditTrail({ 
+        await createAuditTrail({
             userId: req.user?.userId, 
             action: 'Assign schedule to student', 
             tableAffected: 'studentschedule', 
@@ -2522,6 +2522,130 @@ router.post('/student-schedules', async (req, res) => {
         });
     } catch (error) {
         console.error('Assign schedule error:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+// Assign multiple schedules to student (bulk)
+router.post('/student-schedules/bulk', async (req, res) => {
+    try {
+        const { assignments } = req.body;
+
+        if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Assignments array is required and must not be empty' 
+            });
+        }
+
+        // Validate all assignments
+        for (const assignment of assignments) {
+            if (!assignment.studentId || !assignment.scheduleId) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Each assignment must have studentId and scheduleId' 
+                });
+            }
+        }
+
+        const connection = await pool.getConnection();
+        
+        try {
+            await connection.beginTransaction();
+
+            const results = [];
+            const errors = [];
+
+            for (const assignment of assignments) {
+                const { studentId, scheduleId } = assignment;
+
+                try {
+                    // Check if assignment already exists
+                    const [existing] = await connection.execute(
+                        'SELECT StudentScheduleID FROM studentschedule WHERE StudentID = ? AND ScheduleID = ?',
+                        [studentId, scheduleId]
+                    );
+
+                    if (existing.length > 0) {
+                        errors.push(`Schedule ${scheduleId} already assigned to student ${studentId}`);
+                        continue;
+                    }
+
+                    // Verify student exists and is approved
+                    const [student] = await connection.execute(
+                        'SELECT StudentID, FullName, EnrollmentStatus FROM studentrecord WHERE StudentID = ?',
+                        [studentId]
+                    );
+
+                    if (student.length === 0) {
+                        errors.push(`Student ${studentId} not found`);
+                        continue;
+                    }
+
+                    if (student[0].EnrollmentStatus !== 'approved') {
+                        errors.push(`Student ${studentId} is not approved`);
+                        continue;
+                    }
+
+                    // Verify schedule exists
+                    const [schedule] = await connection.execute(
+                        'SELECT ScheduleID, TeacherID, SubjectID FROM teacherschedule WHERE ScheduleID = ?',
+                        [scheduleId]
+                    );
+
+                    if (schedule.length === 0) {
+                        errors.push(`Schedule ${scheduleId} not found`);
+                        continue;
+                    }
+
+                    // Create the assignment
+                    const [result] = await connection.execute(
+                        'INSERT INTO studentschedule (StudentID, ScheduleID, CreatedBy) VALUES (?, ?, ?)',
+                        [studentId, scheduleId, req.user?.userId || null]
+                    );
+
+                    results.push({
+                        id: result.insertId,
+                        studentId,
+                        scheduleId
+                    });
+
+                    // Create audit trail
+                    await createAuditTrail({
+                        userId: req.user?.userId, 
+                        action: 'Assign schedule to student', 
+                        tableAffected: 'studentschedule', 
+                        recordId: result.insertId 
+                    }).catch(() => {});
+
+                } catch (error) {
+                    console.error(`Error assigning schedule ${scheduleId} to student ${studentId}:`, error);
+                    errors.push(`Failed to assign schedule ${scheduleId} to student ${studentId}: ${error.message}`);
+                }
+            }
+
+            await connection.commit();
+
+            res.status(201).json({
+                success: true,
+                data: {
+                    created: results,
+                    errors: errors,
+                    total: assignments.length,
+                    successful: results.length,
+                    failed: errors.length
+                }
+            });
+
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+
+    } catch (error) {
+        console.error('Bulk assign schedules error:', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
 });

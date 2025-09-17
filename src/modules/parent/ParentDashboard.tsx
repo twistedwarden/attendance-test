@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import CompactLayout from './components/CompactLayout';
 import CompactDashboard from './pages/CompactDashboard';
+import ModernDashboard from './pages/ModernDashboard';
 import CompactProfile from './pages/CompactProfile';
 import CompactAttendance from './pages/CompactAttendance';
 import NoStudentsMessage from './components/NoStudentsMessage';
@@ -121,7 +122,7 @@ const ParentDashboard = () => {
             index 
             element={
               <div className="flex-1 w-full h-full overflow-auto">
-                <CompactDashboard selectedStudent={selectedStudent} />
+                <ModernDashboard selectedStudent={selectedStudent} />
               </div>
             } 
           />

@@ -35,7 +35,7 @@ const run = async () => {
 		multipleStatements: true,
 	});
 
-	const dbName = process.env.DB_NAME || 'biometricattendancedb';
+	const dbName = process.env.DB_NAME || 'attendance';
 	await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
 	await connection.query(`USE \`${dbName}\``);
 

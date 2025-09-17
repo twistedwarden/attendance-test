@@ -116,15 +116,15 @@ export default function AttendanceLog() {
       
       // Calculate attendance statistics
       const total = data.length;
-      const present = data.filter(r => {
+      const present = data.filter((r: SubjectAttendanceRow) => {
         const statusLower = (r.Status || '').toLowerCase();
         return !statusLower.includes('late') && !statusLower.includes('absent') && !statusLower.includes('fail');
       }).length;
-      const late = data.filter(r => {
+      const late = data.filter((r: SubjectAttendanceRow) => {
         const statusLower = (r.Status || '').toLowerCase();
         return statusLower.includes('late');
       }).length;
-      const absent = data.filter(r => {
+      const absent = data.filter((r: SubjectAttendanceRow) => {
         const statusLower = (r.Status || '').toLowerCase();
         return statusLower.includes('absent') || statusLower.includes('fail');
       }).length;
@@ -261,7 +261,7 @@ export default function AttendanceLog() {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'present':
-        return 'Present';
+        return 'Time in';
       case 'late':
         return 'Late Arrival';
       case 'failed':
@@ -401,7 +401,7 @@ export default function AttendanceLog() {
                     {record.grade} • {getStatusText(record.status)}
                     {viewMode === 'subject' && 'subject' in record && (
                       <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
-                        {record.subject}
+                        {(record as any).subject}
                       </span>
                     )}
                   </p>
@@ -500,7 +500,7 @@ export default function AttendanceLog() {
                   value={form.status}
                   onChange={(e) => setForm({ ...form, status: e.target.value as any })}
                 >
-                  <option value="Present">Present</option>
+                  <option value="Present">Time in</option>
                   <option value="Excused">Excused</option>
                 </select>
               </div>
@@ -615,7 +615,7 @@ export default function AttendanceLog() {
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <div className="flex items-center space-x-2">
                 <CheckCircle className="h-4 w-4 text-green-600" />
-                <span className="text-sm font-medium text-green-800">Present</span>
+                <span className="text-sm font-medium text-green-800">Time in</span>
               </div>
               <p className="text-2xl font-bold text-green-900 mt-1">{attendanceStats.present}</p>
             </div>
@@ -715,7 +715,7 @@ export default function AttendanceLog() {
                             ? 'bg-yellow-100 text-yellow-800' 
                             : 'bg-red-100 text-red-800'
                         }`}>
-                          {status === 'present' ? 'Present' : status === 'late' ? 'Late Arrival' : 'Absent'}
+                          {status === 'present' ? 'Time in' : status === 'late' ? 'Late Arrival' : 'Absent'}
                         </div>
                         {status === 'present' && <CheckCircle className="h-5 w-5 text-green-500" />}
                         {status === 'late' && <Clock className="h-5 w-5 text-yellow-500" />}
@@ -731,4 +731,4 @@ export default function AttendanceLog() {
       </Modal>
     </div>
   );
-}
+} 

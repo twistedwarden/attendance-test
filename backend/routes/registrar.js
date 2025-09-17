@@ -242,16 +242,16 @@ router.post('/enrollments/:id/approve', authenticateToken, requireRole(['registr
     try {
       await connection.beginTransaction();
 
-      // Update student enrollment status (and optional section assignment)
+      // Update student enrollment status and set status to Active (and optional section assignment)
       if (sectionId) {
         await connection.execute(
-          'UPDATE studentrecord SET EnrollmentStatus = ?, EnrollmentDate = NOW(), SectionID = ? WHERE StudentID = ?',
-          ['approved', sectionId, id]
+          'UPDATE studentrecord SET EnrollmentStatus = ?, Status = ?, EnrollmentDate = NOW(), SectionID = ? WHERE StudentID = ?',
+          ['approved', 'Active', sectionId, id]
         );
       } else {
         await connection.execute(
-          'UPDATE studentrecord SET EnrollmentStatus = ?, EnrollmentDate = NOW() WHERE StudentID = ?',
-          ['approved', id]
+          'UPDATE studentrecord SET EnrollmentStatus = ?, Status = ?, EnrollmentDate = NOW() WHERE StudentID = ?',
+          ['approved', 'Active', id]
         );
       }
 

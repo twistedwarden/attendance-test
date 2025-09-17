@@ -742,6 +742,19 @@ export const AdminService = {
 		return this.assignScheduleToStudent(payload);
 	},
 
+	async assignMultipleSchedules(assignments: { studentId: number; scheduleId: number }[]) {
+		const token = getToken();
+		if (!token) throw new Error('Not authenticated');
+		const res = await fetch(`${API_BASE_URL}/admin/student-schedules/bulk`, {
+			method: 'POST',
+			headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+			body: JSON.stringify({ assignments })
+		});
+		const data = await res.json();
+		if (!res.ok) throw new Error(data.message || 'Failed to assign schedules to student');
+		return data.data;
+	},
+
 	async removeScheduleAssignment(assignmentId: number) {
 		const token = getToken();
 		if (!token) throw new Error('Not authenticated');

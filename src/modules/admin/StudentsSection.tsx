@@ -957,7 +957,7 @@ export default function StudentsSection() {
                             ? 'bg-yellow-100 text-yellow-800' 
                             : 'bg-red-100 text-red-800'
                         }`}>
-                          {status === 'present' ? 'Present' : status === 'late' ? 'Late Arrival' : 'Absent'}
+                          {status === 'present' ? 'Time in' : status === 'late' ? 'Late Arrival' : 'Absent'}
                         </div>
                       </div>
                     );

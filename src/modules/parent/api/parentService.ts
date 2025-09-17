@@ -31,7 +31,12 @@ export interface AttendanceRecord {
   date: string;
   timeIn: string | null;
   timeOut: string | null;
-  status: 'Present' | 'Late' | 'Excused';
+  status: 'Present' | 'Late' | 'Excused' | 'Absent';
+}
+
+export interface AttendanceStats {
+  todayStatus: 'Present' | 'Late' | 'Excused' | 'Absent' | 'No Record';
+  weeklyPercentage: number;
 }
 
 export interface Notification {
@@ -47,6 +52,33 @@ export interface Notification {
   reviewedBy?: string;
   message: string;
   isRead: boolean;
+}
+
+export interface SubjectAttendanceRecord {
+  attendanceId: number;
+  date: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  status: 'Present' | 'Late' | 'Excused' | 'Absent';
+  createdAt: string;
+}
+
+export interface SubjectAttendanceData {
+  subjectId: number;
+  subjectName: string;
+  teacherName: string;
+  scheduleTimeIn: string;
+  scheduleTimeOut: string;
+  dayOfWeek: string;
+  gracePeriod: number;
+  attendanceRecords: SubjectAttendanceRecord[];
+  stats: {
+    totalDays: number;
+    presentDays: number;
+    lateDays: number;
+    absentDays: number;
+    attendanceRate: number;
+  };
 }
 
 export const ParentService = {
@@ -168,6 +200,20 @@ export const ParentService = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to mark all notifications as read');
   },
+  // Get subject-based attendance for a student
+  async getStudentSubjectAttendance(studentId: number, limit: number = 30): Promise<SubjectAttendanceData[]> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    const res = await fetch(`${API_BASE_URL}/parent/subject-attendance/${studentId}?limit=${limit}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch subject attendance');
+    
+    return data.data || [];
+  },
+
   calculateAttendanceStats(attendanceRecords: AttendanceRecord[]): AttendanceStats {
     const today = new Date().toISOString().split('T')[0];
     const todayRecord = attendanceRecords.find(record => record.date === today);

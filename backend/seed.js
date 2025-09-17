@@ -48,21 +48,49 @@ const insertUsers = async (pool) => {
 	const usersToCreate = [
 		{ Username: 'admin@foothills.edu', Password: 'admin123', Role: 'Admin', Status: 'Active' },
 		{ Username: 'registrar@foothills.edu', Password: 'registrar123', Role: 'Registrar', Status: 'Active' },
-		{ Username: 'sarah.johnson@foothills.edu', Password: 'teacher123', Role: 'Teacher', Status: 'Active' },
-		{ Username: 'michael.chen@foothills.edu', Password: 'teacher123', Role: 'Teacher', Status: 'Active' },
-		{ Username: 'emily.davis@foothills.edu', Password: 'teacher123', Role: 'Teacher', Status: 'Active' },
-		{ Username: 'parent.ava@example.com', Password: 'parent123', Role: 'Parent', Status: 'Active' },
-		{ Username: 'parent.liam@example.com', Password: 'parent123', Role: 'Parent', Status: 'Active' },
-		{ Username: 'parent.noah@example.com', Password: 'parent123', Role: 'Parent', Status: 'Active' },
-		{ Username: 'parent.sophia@example.com', Password: 'parent123', Role: 'Parent', Status: 'Active' },
+		{ Username: 'teacher@foothills.edu', Password: 'teacher123', Role: 'Teacher', Status: 'Active' },
+		{ Username: 'parent@example.com', Password: 'parent123', Role: 'Parent', Status: 'Active' },
 	];
 
 	const hasStatus = await hasColumn(pool, 'useraccount', 'Status');
+
+	// Clean up extra users - keep only one of each role
+	console.log('🧹 Cleaning up extra users...');
+	const targetUsernames = usersToCreate.map(u => u.Username);
+	const [allUsers] = await pool.query('SELECT UserID, Username, Role FROM useraccount ORDER BY UserID');
+	
+	const roleCounts = {};
+	const usersToKeep = [];
+	const usersToDelete = [];
+	
+	// Sort users by UserID to keep the first occurrence of each role
+	for (const user of allUsers) {
+		if (targetUsernames.includes(user.Username)) {
+			// This is one of our target users, keep it
+			usersToKeep.push(user);
+			roleCounts[user.Role] = (roleCounts[user.Role] || 0) + 1;
+		} else if (!roleCounts[user.Role]) {
+			// This is the first occurrence of this role, keep it
+			roleCounts[user.Role] = 1;
+			usersToKeep.push(user);
+		} else {
+			// This is an extra user of a role we already have, delete it
+			usersToDelete.push(user);
+		}
+	}
+	
+	// Delete extra users
+	for (const user of usersToDelete) {
+		console.log(`  🗑️  Deleting extra user: ${user.Username} (${user.Role})`);
+		await pool.query('DELETE FROM useraccount WHERE UserID = ?', [user.UserID]);
+	}
 
 	const createdIds = {};
 	for (const u of usersToCreate) {
 		const [existing] = await pool.query('SELECT UserID FROM useraccount WHERE Username = ?', [u.Username]);
 		if (existing.length > 0) {
+			// Update existing user to Active status
+			await pool.query('UPDATE useraccount SET Status = ? WHERE Username = ?', [u.Status, u.Username]);
 			createdIds[u.Username] = existing[0].UserID;
 			continue;
 		}
@@ -83,10 +111,7 @@ const insertUsers = async (pool) => {
 
 const insertParents = async (pool, userIds) => {
 	const parents = [
-		{ FullName: 'Alice Johnson', ContactInfo: '+1 (555) 123-4567', Relationship: 'Mother', userKey: 'parent.ava@example.com' },
-		{ FullName: 'Bob Chen', ContactInfo: '+1 (555) 234-5678', Relationship: 'Father', userKey: 'parent.liam@example.com' },
-		{ FullName: 'Nora Davis', ContactInfo: '+1 (555) 345-6789', Relationship: 'Mother', userKey: 'parent.noah@example.com' },
-		{ FullName: 'Susan Brown', ContactInfo: '+1 (555) 456-7890', Relationship: 'Guardian', userKey: 'parent.sophia@example.com' },
+		{ FullName: 'Jane Parent', ContactInfo: '+1 (555) 300-3000', Relationship: 'Guardian', userKey: 'parent@example.com' },
 	];
 	const parentIds = {};
 	const hasRelationship = await hasColumn(pool, 'parent', 'Relationship');
@@ -109,23 +134,17 @@ const insertParents = async (pool, userIds) => {
 };
 
 const insertSections = async (pool) => {
-	const sections = [
-		// Grade 1 - 10 sections
-		{ SectionName: 'A', GradeLevel: '1', Description: 'Grade 1 Section A', Capacity: 30 },
-		{ SectionName: 'B', GradeLevel: '1', Description: 'Grade 1 Section B', Capacity: 30 },
-		{ SectionName: 'C', GradeLevel: '1', Description: 'Grade 1 Section C', Capacity: 30 },
-		{ SectionName: 'D', GradeLevel: '1', Description: 'Grade 1 Section D', Capacity: 30 },
-		{ SectionName: 'E', GradeLevel: '1', Description: 'Grade 1 Section E', Capacity: 30 },
-		{ SectionName: 'F', GradeLevel: '1', Description: 'Grade 1 Section F', Capacity: 30 },
-		{ SectionName: 'G', GradeLevel: '1', Description: 'Grade 1 Section G', Capacity: 30 },
-		{ SectionName: 'H', GradeLevel: '1', Description: 'Grade 1 Section H', Capacity: 30 },
-		{ SectionName: 'I', GradeLevel: '1', Description: 'Grade 1 Section I', Capacity: 30 },
-		{ SectionName: 'J', GradeLevel: '1', Description: 'Grade 1 Section J', Capacity: 30 },
-		// Other grades
-		{ SectionName: 'B', GradeLevel: '2', Description: 'Grade 2 Section B', Capacity: 30 },
-		{ SectionName: 'A', GradeLevel: '3', Description: 'Grade 3 Section A', Capacity: 30 },
-		{ SectionName: 'C', GradeLevel: '4', Description: 'Grade 4 Section C', Capacity: 30 },
-	];
+	const sections = [];
+	
+	// Create sections for each grade level from 1-7
+	for (let grade = 1; grade <= 7; grade++) {
+		sections.push({
+			SectionName: 'A',
+			GradeLevel: grade.toString(),
+			Description: `Grade ${grade} Section A`,
+			Capacity: 30
+		});
+	}
 	const sectionIds = {};
 	const hasSectionTable = await tableExists(pool, 'section');
 	if (!hasSectionTable) return sectionIds;
@@ -145,10 +164,7 @@ const insertSections = async (pool) => {
 
 const insertStudents = async (pool, createdByUserId, parentIds, sectionIds) => {
 	const students = [
-		{ FullName: 'Ava Johnson', DateOfBirth: '2018-03-15', Gender: 'Female', PlaceOfBirth: 'Manila, Philippines', Nationality: 'Filipino', Address: '123 Main St, Quezon City, Metro Manila', GradeLevel: '1', Section: 'A', SectionKey: '1-A', ParentKey: 'parent.ava@example.com' },
-		{ FullName: 'Liam Chen', DateOfBirth: '2017-07-22', Gender: 'Male', PlaceOfBirth: 'Cebu City, Philippines', Nationality: 'Filipino', Address: '456 Oak Ave, Cebu City, Cebu', GradeLevel: '2', Section: 'B', SectionKey: '2-B', ParentKey: 'parent.liam@example.com' },
-		{ FullName: 'Noah Davis', DateOfBirth: '2016-11-08', Gender: 'Male', PlaceOfBirth: 'Davao City, Philippines', Nationality: 'Filipino', Address: '789 Pine Rd, Davao City, Davao del Sur', GradeLevel: '3', Section: 'A', SectionKey: '3-A', ParentKey: 'parent.noah@example.com' },
-		{ FullName: 'Sophia Brown', DateOfBirth: '2015-05-12', Gender: 'Female', PlaceOfBirth: 'Makati City, Philippines', Nationality: 'Filipino', Address: '321 Elm St, Makati City, Metro Manila', GradeLevel: '4', Section: 'C', SectionKey: '4-C', ParentKey: 'parent.sophia@example.com' },
+		{ FullName: 'Test Student', DateOfBirth: '2018-03-15', Gender: 'Male', PlaceOfBirth: 'Manila, Philippines', Nationality: 'Filipino', Address: '123 Main St, Quezon City, Metro Manila', GradeLevel: '1', SectionKey: '1-A', ParentKey: 'parent@example.com' },
 	];
 	const studentIds = {};
 	const hasCreatedBy = await hasColumn(pool, 'studentrecord', 'CreatedBy');
@@ -160,27 +176,25 @@ const insertStudents = async (pool, createdByUserId, parentIds, sectionIds) => {
 	const hasPlaceOfBirth = await hasColumn(pool, 'studentrecord', 'PlaceOfBirth');
 	const hasNationality = await hasColumn(pool, 'studentrecord', 'Nationality');
 	const hasAddress = await hasColumn(pool, 'studentrecord', 'Address');
-	const hasSectionCol = await hasColumn(pool, 'studentrecord', 'Section');
-	const hasSectionIdCol = await hasColumn(pool, 'studentrecord', 'SectionID');
-	const dummyTemplate = Buffer.from('');
-	for (const s of students) {
-		const [existing] = await pool.query('SELECT StudentID FROM studentrecord WHERE FullName = ? AND GradeLevel = ? AND Section = ?', [s.FullName, s.GradeLevel, s.Section]);
-		if (existing.length > 0) {
-			studentIds[s.FullName] = existing[0].StudentID;
-			// Also try to backfill ParentID and SectionID if columns exist and currently NULL
-			if (hasParentIdCol && parentIds[s.ParentKey]) {
-				await pool.query('UPDATE studentrecord SET ParentID = ? WHERE FullName = ? AND GradeLevel = ? AND Section = ? AND (ParentID IS NULL OR ParentID = 0)', [parentIds[s.ParentKey], s.FullName, s.GradeLevel, s.Section]);
+		const hasSectionIdCol = await hasColumn(pool, 'studentrecord', 'SectionID');
+		const dummyTemplate = Buffer.from('');
+		for (const s of students) {
+			const [existing] = await pool.query('SELECT StudentID FROM studentrecord WHERE FullName = ? AND GradeLevel = ?', [s.FullName, s.GradeLevel]);
+			if (existing.length > 0) {
+				studentIds[s.FullName] = existing[0].StudentID;
+				// Also try to backfill ParentID and SectionID if columns exist and currently NULL
+				if (hasParentIdCol && parentIds[s.ParentKey]) {
+					await pool.query('UPDATE studentrecord SET ParentID = ? WHERE FullName = ? AND GradeLevel = ? AND (ParentID IS NULL OR ParentID = 0)', [parentIds[s.ParentKey], s.FullName, s.GradeLevel]);
+				}
+				if (hasSectionIdCol && sectionIds[s.SectionKey]) {
+					await pool.query('UPDATE studentrecord SET SectionID = ? WHERE FullName = ? AND GradeLevel = ? AND (SectionID IS NULL OR SectionID = 0)', [sectionIds[s.SectionKey], s.FullName, s.GradeLevel]);
+				}
+				continue;
 			}
-			if (hasSectionIdCol && sectionIds[s.SectionKey]) {
-				await pool.query('UPDATE studentrecord SET SectionID = ? WHERE FullName = ? AND GradeLevel = ? AND Section = ? AND (SectionID IS NULL OR SectionID = 0)', [sectionIds[s.SectionKey], s.FullName, s.GradeLevel, s.Section]);
-			}
-			continue;
-		}
-		const parentId = s.ParentKey ? parentIds[s.ParentKey] || null : null;
-		const sectionId = s.SectionKey ? sectionIds[s.SectionKey] || null : null;
-		const cols = ['FullName', 'GradeLevel'];
-		const vals = [s.FullName, s.GradeLevel];
-		if (hasSectionCol) { cols.push('Section'); vals.push(s.Section); }
+			const parentId = s.ParentKey ? parentIds[s.ParentKey] || null : null;
+			const sectionId = s.SectionKey ? sectionIds[s.SectionKey] || null : null;
+			const cols = ['FullName', 'GradeLevel'];
+			const vals = [s.FullName, s.GradeLevel];
 		if (hasDateOfBirth) { cols.push('DateOfBirth'); vals.push(s.DateOfBirth); }
 		if (hasGender) { cols.push('Gender'); vals.push(s.Gender); }
 		if (hasPlaceOfBirth) { cols.push('PlaceOfBirth'); vals.push(s.PlaceOfBirth); }
@@ -220,9 +234,7 @@ const insertSubjects = async (pool) => {
 
 const insertTeacherSchedules = async (pool, userIds, subjectIds, sectionIds) => {
 	const teacherMap = {
-		'sarah.johnson@foothills.edu': { SectionKey: '1-A', Subject: 'Mathematics', TimeIn: '08:00:00', TimeOut: '09:00:00', DayOfWeek: 'Mon', GracePeriod: 15 },
-		'michael.chen@foothills.edu': { SectionKey: '2-B', Subject: 'Science', TimeIn: '09:00:00', TimeOut: '10:00:00', DayOfWeek: 'Tue', GracePeriod: 10 },
-		'emily.davis@foothills.edu': { SectionKey: '3-A', Subject: 'English', TimeIn: '10:00:00', TimeOut: '11:00:00', DayOfWeek: 'Wed', GracePeriod: 20 },
+		'teacher@foothills.edu': { SectionKey: '1-A', Subject: 'Mathematics', TimeIn: '08:00:00', TimeOut: '09:00:00', DayOfWeek: 'Mon', GracePeriod: 15 },
 	};
 	const scheduleIds = {};
 	const hasGracePeriod = await hasColumn(pool, 'teacherschedule', 'GracePeriod');
@@ -294,9 +306,7 @@ const insertSectionSchedules = async (pool, sectionIds, subjectIds) => {
 
 const insertTeacherRecords = async (pool, userIds) => {
 	const teachers = [
-		{ userKey: 'sarah.johnson@foothills.edu', FullName: 'Sarah Johnson', ContactInfo: '+1 (555) 200-1001' },
-		{ userKey: 'michael.chen@foothills.edu', FullName: 'Michael Chen', ContactInfo: '+1 (555) 200-1002' },
-		{ userKey: 'emily.davis@foothills.edu', FullName: 'Emily Davis', ContactInfo: '+1 (555) 200-1003' },
+		{ userKey: 'teacher@foothills.edu', FullName: 'John Teacher', ContactInfo: '+1 (555) 200-2000' },
 	];
 	const hasTeacherTable = await tableExists(pool, 'teacherrecord');
 	if (!hasTeacherTable) return;
@@ -362,9 +372,7 @@ const insertRegistrarRecords = async (pool, userIds) => {
 
 const insertStudentSchedules = async (pool, studentIds, userIds, subjectIds, sectionIds) => {
 	const mappings = [
-		{ student: 'Ava Johnson', subject: 'Mathematics', teacher: 'sarah.johnson@foothills.edu', sectionKey: '1-A' },
-		{ student: 'Liam Chen', subject: 'Science', teacher: 'michael.chen@foothills.edu', sectionKey: '2-B' },
-		{ student: 'Noah Davis', subject: 'English', teacher: 'emily.davis@foothills.edu', sectionKey: '3-A' },
+		{ student: 'Test Student', subject: 'Mathematics', teacher: 'teacher@foothills.edu', sectionKey: '1-A' },
 	];
 	
 	const hasStudentScheduleTable = await tableExists(pool, 'studentschedule');
@@ -407,9 +415,7 @@ const insertAttendanceLogs = async (pool, studentIds, validatorUserId) => {
 	const today = new Date();
 	const fmt = (d) => d.toISOString().slice(0, 10);
 	const logs = [
-		{ student: 'Ava Johnson', Date: fmt(today), TimeIn: '08:05:00', TimeOut: '15:00:00' },
-		{ student: 'Liam Chen', Date: fmt(today), TimeIn: null, TimeOut: null },
-		{ student: 'Noah Davis', Date: fmt(today), TimeIn: '08:25:00', TimeOut: '15:00:00' },
+		{ student: 'Test Student', Date: fmt(today), TimeIn: '08:05:00', TimeOut: '15:00:00' },
 	];
 	for (const l of logs) {
 		const id = studentIds[l.student];
@@ -429,7 +435,7 @@ const insertSubjectAttendance = async (pool, studentIds, subjectIds, validatorUs
 	const todayStr = fmt(today);
 	
 	// Create subject attendance records for each student and subject combination
-	const students = ['Ava Johnson', 'Liam Chen', 'Noah Davis', 'Sophia Brown'];
+	const students = ['Test Student'];
 	const subjects = ['Mathematics', 'Science', 'English'];
 	
 	for (const studentName of students) {
@@ -467,8 +473,7 @@ const insertExcuseLetters = async (pool, studentIds, reviewerUserId, parentIds) 
 	const hasAttachmentCol = await hasColumn(pool, 'excuseletter', 'AttachmentFile');
 	const hasStatusCol = await hasColumn(pool, 'excuseletter', 'Status');
 	const letters = [
-		{ student: 'Liam Chen', reason: 'Medical appointment', status: 'Pending', parentKey: 'parent.liam@example.com' },
-		{ student: 'Noah Davis', reason: 'Family emergency', status: 'Approved', parentKey: 'parent.noah@example.com' },
+		{ student: 'Test Student', reason: 'Medical appointment', status: 'Pending', parentKey: 'parent@example.com' },
 	];
 	for (const e of letters) {
 		const sId = studentIds[e.student];
@@ -494,8 +499,7 @@ const insertNotifications = async (pool, userIds) => {
 	if (!useNotification && !useNotificationLog) return;
 
 	const notifications = [
-		{ to: 'parent.liam@example.com', message: 'Your child was absent today.' },
-		{ to: 'parent.ava@example.com', message: 'Your child was present today.' },
+		{ to: 'parent@example.com', message: 'Your child was present today.' },
 	];
 	for (const n of notifications) {
 		const uid = userIds[n.to];
@@ -526,8 +530,7 @@ const insertReports = async (pool, generatorUserId, studentIds) => {
 	const today = now.toISOString().slice(0, 10);
 	const payload = JSON.stringify({ summary: 'Seeded report', generatedAt: now.toISOString() });
 	const entries = [
-		{ Student: 'Ava Johnson', type: 'Monthly', start: thisMonthStart, end: today },
-		{ Student: 'Liam Chen', type: 'Weekly', start: today, end: today },
+		{ Student: 'Test Student', type: 'Monthly', start: thisMonthStart, end: today },
 	];
 	for (const e of entries) {
 		const sId = studentIds[e.Student];
@@ -568,23 +571,16 @@ const seed = async () => {
 		const sectionIds = await insertSections(pool);
 		const studentIds = await insertStudents(pool, adminId, parentIds, sectionIds);
 
-		// Backfill ParentID, Section, and SectionID for any existing rows that matched but were NULL previously
+		// Backfill ParentID and SectionID for any existing rows that matched but were NULL previously
 		const hasParentIdCol = await hasColumn(pool, 'studentrecord', 'ParentID');
-		const hasSectionCol = await hasColumn(pool, 'studentrecord', 'Section');
 		const hasSectionIdCol = await hasColumn(pool, 'studentrecord', 'SectionID');
-		if (hasParentIdCol || hasSectionCol || hasSectionIdCol) {
+		if (hasParentIdCol || hasSectionIdCol) {
 			const mappings = [
-				{ FullName: 'Ava Johnson', GradeLevel: '1', Section: 'A', SectionKey: '1-A', ParentKey: 'parent.ava@example.com' },
-				{ FullName: 'Liam Chen', GradeLevel: '2', Section: 'B', SectionKey: '2-B', ParentKey: 'parent.liam@example.com' },
-				{ FullName: 'Noah Davis', GradeLevel: '3', Section: 'A', SectionKey: '3-A', ParentKey: 'parent.noah@example.com' },
-				{ FullName: 'Sophia Brown', GradeLevel: '4', Section: 'C', SectionKey: '4-C', ParentKey: 'parent.sophia@example.com' },
+				{ FullName: 'Test Student', GradeLevel: '1', SectionKey: '1-A', ParentKey: 'parent@example.com' },
 			];
 			for (const m of mappings) {
 				if (hasParentIdCol && parentIds[m.ParentKey]) {
 					await pool.query('UPDATE studentrecord SET ParentID = ? WHERE FullName = ? AND GradeLevel = ? AND (ParentID IS NULL OR ParentID = 0)', [parentIds[m.ParentKey], m.FullName, m.GradeLevel]);
-				}
-				if (hasSectionCol) {
-					await pool.query('UPDATE studentrecord SET Section = ? WHERE FullName = ? AND GradeLevel = ? AND (Section IS NULL OR Section = "")', [m.Section, m.FullName, m.GradeLevel]);
 				}
 				if (hasSectionIdCol && sectionIds[m.SectionKey]) {
 					await pool.query('UPDATE studentrecord SET SectionID = ? WHERE FullName = ? AND GradeLevel = ? AND (SectionID IS NULL OR SectionID = 0)', [sectionIds[m.SectionKey], m.FullName, m.GradeLevel]);

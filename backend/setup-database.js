@@ -47,7 +47,7 @@ const setupDatabase = async () => {
 		console.log('✅ Connected to MySQL server');
 
 		// Create database if it doesn't exist
-		const dbName = process.env.DB_NAME || 'biometricattendancedb';
+		const dbName = process.env.DB_NAME || 'attendance';
 		await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
 		console.log(`✅ Database '${dbName}' created/verified`);
 
@@ -56,7 +56,7 @@ const setupDatabase = async () => {
 		console.log(`✅ Using database '${dbName}'`);
 
 		// Read and execute the SQL dump
-		const sqlDumpPath = path.join(process.cwd(), 'Dump20250825.sql');
+		const sqlDumpPath = path.join(process.cwd(), 'v1.sql');
 		
 		if (fs.existsSync(sqlDumpPath)) {
 			console.log('📖 Reading SQL dump file...');

@@ -10,6 +10,7 @@
     "setup-db": "node setup-database.js",
     "migrate": "node migrate.js",
     "seed": "node seed.js",
+    "truncate-all": "node truncate-all-tables.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"

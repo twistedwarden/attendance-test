@@ -135,6 +135,16 @@ export default function EnrollmentsSection() {
   };
 
   const updateScheduleAssignment = (index: number, scheduleId: number) => {
+    // Check if this schedule is already assigned to another slot
+    const isDuplicate = scheduleAssignments.some((assignment, i) => 
+      i !== index && assignment.scheduleId === scheduleId && scheduleId > 0
+    );
+    
+    if (isDuplicate) {
+      toast.error('This schedule is already assigned. Please select a different schedule.');
+      return;
+    }
+    
     const updated = [...scheduleAssignments];
     updated[index] = { scheduleId };
     setScheduleAssignments(updated);
@@ -143,6 +153,17 @@ export default function EnrollmentsSection() {
   const handleApprove = async () => {
     if (!selectedEnrollment) {
       console.error('No selected enrollment for approval');
+      return;
+    }
+    
+    // Validate for duplicate schedules before approval
+    const assignedScheduleIds = scheduleAssignments
+      .map(assignment => assignment.scheduleId)
+      .filter(id => id > 0);
+    const uniqueScheduleIds = [...new Set(assignedScheduleIds)];
+    
+    if (assignedScheduleIds.length !== uniqueScheduleIds.length) {
+      toast.error('Please remove duplicate schedule assignments before approving.');
       return;
     }
     
@@ -704,11 +725,19 @@ export default function EnrollmentsSection() {
                           className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
                         >
                           <option value={0}>Select Schedule</option>
-                          {schedules.map(schedule => (
-                            <option key={schedule.id} value={schedule.id}>
-                              {schedule.subject} - {schedule.teacher} ({schedule.days.join(', ')} {schedule.startTime}-{schedule.endTime})
-                            </option>
-                          ))}
+                          {schedules
+                            .filter(schedule => {
+                              // Filter out schedules that are already assigned to other slots
+                              const assignedScheduleIds = scheduleAssignments
+                                .map(assignment => assignment.scheduleId)
+                                .filter(id => id > 0);
+                              return !assignedScheduleIds.includes(schedule.id);
+                            })
+                            .map(schedule => (
+                              <option key={schedule.id} value={schedule.id}>
+                                {schedule.subject} - {schedule.teacher} ({schedule.days.join(', ')} {schedule.startTime}-{schedule.endTime})
+                              </option>
+                            ))}
                         </select>
                       </div>
                       <button

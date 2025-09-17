@@ -175,7 +175,7 @@ const CompactDashboard = ({ selectedStudent }: CompactDashboardProps) => {
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-gray-600 flex items-center">
               <TrendingUp size={14} className="mr-1" />
-              Present Days
+              Time in Days
             </CardTitle>
           </CardHeader>
           <CardContent>
