@@ -9,7 +9,6 @@ import adminRoutes from './routes/admin.js';
 import parentRoutes from './routes/parent.js';
 import teacherRoutes from './routes/teacher.js';
 import registrarRoutes from './routes/registrar.js';
-import fingerprintRoutes from '../fp-api/routes/fingerprint.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -69,7 +68,16 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/parent', parentRoutes);
 app.use('/api/teacher', teacherRoutes);
 app.use('/api/registrar', registrarRoutes);
-app.use('/api/fingerprint', fingerprintRoutes);
+// Load fingerprint API routes dynamically so deployment doesn't fail
+// when the sibling `fp-api` package is not installed in this environment.
+try {
+  const fpModule = await import('../fp-api/routes/fingerprint.js');
+  const fingerprintRoutes = fpModule.default || fpModule;
+  app.use('/api/fingerprint', fingerprintRoutes);
+  console.log('Fingerprint API routes loaded');
+} catch (err) {
+  console.warn('Fingerprint API not available. Continuing without it. Reason:', err?.message || err);
+}
 
 // Serve React build (dist) in production
 if ((process.env.NODE_ENV || 'development') === 'production') {
