@@ -34,6 +34,10 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+// Behind reverse proxies (e.g., Render), trust the first proxy so
+// express-rate-limit can correctly read X-Forwarded-* headers.
+app.set('trust proxy', 1);
+
 // Rate limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
