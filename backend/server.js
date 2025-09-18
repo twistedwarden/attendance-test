@@ -10,6 +10,7 @@ import parentRoutes from './routes/parent.js';
 import teacherRoutes from './routes/teacher.js';
 import registrarRoutes from './routes/registrar.js';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 // Load environment variables
@@ -79,13 +80,19 @@ try {
   console.warn('Fingerprint API not available. Continuing without it. Reason:', err?.message || err);
 }
 
-// Serve React build (dist) in production
+// Serve React build (dist) in production when available
 if ((process.env.NODE_ENV || 'development') === 'production') {
   const clientDist = path.join(__dirname, '../dist');
-  app.use(express.static(clientDist));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(clientDist, 'index.html'));
-  });
+  const indexHtml = path.join(clientDist, 'index.html');
+  if (fs.existsSync(indexHtml)) {
+    app.use(express.static(clientDist));
+    app.get('*', (req, res) => {
+      res.sendFile(indexHtml);
+    });
+    console.log('Serving static frontend from', clientDist);
+  } else {
+    console.warn('Static frontend not found at', indexHtml, '- continuing without serving client');
+  }
 }
 
 // 404 handler
