@@ -193,15 +193,14 @@ class RegistrarService {
     });
     
     if (!response.ok) {
-      throw new Error('Failed to export report');
+      throw new Error(`Failed to export report: ${response.status} ${response.statusText}`);
     }
     
-    // Handle file download
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `report-${type}-${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.download = `report-${type}-${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);

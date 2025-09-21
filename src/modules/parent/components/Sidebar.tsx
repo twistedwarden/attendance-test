@@ -8,7 +8,8 @@ import {
   ChevronDown,
   Users,
   Fingerprint,
-  UserPlus
+  UserPlus,
+  FileText
 } from 'lucide-react';
 import { Student, Parent } from '../api/parentService';
 
@@ -43,6 +44,18 @@ const Sidebar = ({ selectedStudent, onStudentChange, students, parent, isMobileO
       href: '/attendance',
       icon: Calendar,
       description: 'View Records'
+    },
+    {
+      name: 'Excuse Letters',
+      href: '/excuse-letters',
+      icon: FileText,
+      description: 'Submit & Track'
+    },
+    {
+      name: 'Follow-up Documents',
+      href: '/follow-up-documents',
+      icon: FileText,
+      description: 'Upload & View'
     }
   ];
 

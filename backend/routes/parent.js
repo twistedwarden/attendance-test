@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
-import { pool } from '../config/database.js';
+import { pool, storeEnrollmentDocuments } from '../config/database.js';
 
 const router = express.Router();
 
@@ -54,6 +54,7 @@ router.get('/students', authenticateToken, requireRole(['parent']), async (req, 
        FROM studentrecord s
        LEFT JOIN section sec ON sec.SectionID = s.SectionID
        WHERE s.ParentID = ?
+         AND (s.EnrollmentStatus IS NULL OR s.EnrollmentStatus <> 'declined')
        ORDER BY s.StudentID`,
       [parentId]
     );
@@ -333,6 +334,98 @@ router.post('/notifications/mark-all-read', authenticateToken, requireRole(['par
   }
 });
 
+// ===== ENROLLMENT FOLLOW-UP DOCUMENTS =====
+
+// Get enrollment documents submitted by this parent (optionally filter by student)
+router.get('/enrollment-documents', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const parentId = req.user.parentId;
+    const { studentId } = req.query;
+
+    if (!parentId) {
+      return res.status(404).json({ success: false, message: 'Parent profile not found' });
+    }
+
+    let sql = `
+      SELECT ed.DocumentID as documentId,
+             ed.StudentID as studentId,
+             sr.FullName as studentName,
+             ed.SubmittedByUserID as submittedByUserId,
+             ed.Documents as documents,
+             ed.AdditionalInfo as additionalInfo,
+             ed.CreatedAt as createdAt
+      FROM enrollment_documents ed
+      JOIN studentrecord sr ON sr.StudentID = ed.StudentID
+      WHERE sr.ParentID = ?`;
+    const params = [parentId];
+
+    if (studentId) {
+      sql += ' AND ed.StudentID = ?';
+      params.push(studentId);
+    }
+
+    sql += ' ORDER BY ed.CreatedAt DESC, ed.DocumentID DESC';
+
+    const [rows] = await pool.execute(sql, params);
+    const data = rows.map(r => ({
+      documentId: r.documentId,
+      studentId: r.studentId,
+      studentName: r.studentName,
+      submittedByUserId: r.submittedByUserId,
+      documents: r.documents ? JSON.parse(r.documents) : [],
+      additionalInfo: r.additionalInfo || null,
+      createdAt: r.createdAt
+    }));
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error('Get enrollment documents error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Submit follow-up enrollment documents for a student
+router.post('/enrollment-documents', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const parentId = req.user.parentId;
+    const userId = req.user.userId;
+    const { studentId, documents = [], additionalInfo = null } = req.body;
+
+    if (!parentId) {
+      return res.status(404).json({ success: false, message: 'Parent profile not found' });
+    }
+
+    if (!studentId) {
+      return res.status(400).json({ success: false, message: 'studentId is required' });
+    }
+
+    // Verify the student belongs to this parent
+    const [studentCheck] = await pool.execute(
+      'SELECT StudentID FROM studentrecord WHERE StudentID = ? AND ParentID = ? LIMIT 1',
+      [studentId, parentId]
+    );
+    if (studentCheck.length === 0) {
+      return res.status(403).json({ success: false, message: 'Access denied to this student' });
+    }
+
+    // Persist the follow-up document record
+    const docId = await storeEnrollmentDocuments(studentId, {
+      submittedByUserId: userId,
+      documents,
+      additionalInfo
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Follow-up documents submitted successfully',
+      data: { documentId: docId }
+    });
+  } catch (error) {
+    console.error('Submit follow-up documents error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // Get subject-based attendance for a specific student
 router.get('/subject-attendance/:studentId', authenticateToken, requireRole(['parent']), async (req, res) => {
   try {
@@ -430,6 +523,270 @@ router.get('/subject-attendance/:studentId', authenticateToken, requireRole(['pa
     return res.json({ success: true, data: subjectStats });
   } catch (error) {
     console.error('Get subject attendance error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ===== EXCUSE LETTER ROUTES =====
+
+// Get excuse letters for parent's students
+router.get('/excuse-letters', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const parentId = req.user.parentId;
+    const { studentId, status, limit = 50 } = req.query;
+
+    if (!parentId) {
+      return res.status(404).json({ success: false, message: 'Parent profile not found' });
+    }
+
+    let query = `
+      SELECT 
+        el.LetterID as excuseLetterId,
+        el.StudentID as studentId,
+        el.ParentID as parentId,
+        NULL as subjectId,
+        el.DateFiled as dateFrom,
+        el.DateFiled as dateTo,
+        el.Reason as reason,
+        el.AttachmentFile as supportingDocumentPath,
+        LOWER(el.Status) as status,
+        'parent' as submittedBy,
+        el.ParentID as submittedByUserId,
+        el.ReviewedBy as reviewedByUserId,
+        NULL as reviewNotes,
+        el.DateFiled as createdAt,
+        el.DateFiled as updatedAt,
+        el.ReviewedDate as reviewedAt,
+        sr.FullName as studentName,
+        sr.GradeLevel as gradeLevel,
+        sec.SectionName as sectionName,
+        NULL as subjectName,
+        COALESCE(tr.FullName, ua.Username) as reviewedByName
+      FROM excuseletter el
+      JOIN studentrecord sr ON sr.StudentID = el.StudentID
+      LEFT JOIN section sec ON sec.SectionID = sr.SectionID
+      LEFT JOIN teacherrecord tr ON tr.UserID = el.ReviewedBy
+      LEFT JOIN useraccount ua ON ua.UserID = el.ReviewedBy
+      WHERE el.ParentID = ?
+    `;
+
+    const params = [parentId];
+
+    if (studentId) {
+      query += ' AND el.StudentID = ?';
+      params.push(studentId);
+    }
+
+    if (status && status !== 'all') {
+      query += ' AND LOWER(el.Status) = ?';
+      params.push(status.toLowerCase());
+    }
+
+    query += ' ORDER BY el.DateFiled DESC LIMIT ?';
+    params.push(parseInt(limit));
+
+    const [rows] = await pool.execute(query, params);
+
+    const excuseLetters = rows.map(letter => ({
+      excuseLetterId: letter.excuseLetterId,
+      studentId: letter.studentId,
+      studentName: letter.studentName,
+      gradeLevel: letter.gradeLevel,
+      sectionName: letter.sectionName,
+      subjectId: letter.subjectId,
+      subjectName: letter.subjectName,
+      dateFrom: letter.dateFrom,
+      dateTo: letter.dateTo,
+      reason: letter.reason,
+      supportingDocumentPath: letter.supportingDocumentPath,
+      status: letter.status,
+      submittedBy: letter.submittedBy,
+      submittedByUserId: letter.submittedByUserId,
+      reviewedByUserId: letter.reviewedByUserId,
+      reviewedByName: letter.reviewedByName,
+      reviewNotes: letter.reviewNotes,
+      createdAt: letter.createdAt,
+      updatedAt: letter.updatedAt,
+      reviewedAt: letter.reviewedAt
+    }));
+
+    return res.json({ success: true, data: excuseLetters });
+  } catch (error) {
+    console.error('Get excuse letters error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Submit excuse letter
+router.post('/excuse-letters', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const parentId = req.user.parentId;
+    const userId = req.user.userId;
+    const { studentId, subjectId, dateFrom, dateTo, reason, supportingDocumentPath } = req.body;
+
+    if (!parentId) {
+      return res.status(404).json({ success: false, message: 'Parent profile not found' });
+    }
+
+    // Validate required fields
+    if (!studentId || !dateFrom || !dateTo || !reason) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Student ID, date from, date to, and reason are required' 
+      });
+    }
+
+    // Verify the student belongs to this parent
+    const [studentCheck] = await pool.execute(
+      'SELECT StudentID FROM studentrecord WHERE StudentID = ? AND ParentID = ?',
+      [studentId, parentId]
+    );
+
+    if (studentCheck.length === 0) {
+      return res.status(403).json({ success: false, message: 'Access denied to this student' });
+    }
+
+    // Validate date range
+    const fromDate = new Date(dateFrom);
+    const toDate = new Date(dateTo);
+    if (fromDate > toDate) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Date from cannot be after date to' 
+      });
+    }
+
+    // Insert excuse letter using existing table structure
+    const [result] = await pool.execute(
+      `INSERT INTO excuseletter 
+       (StudentID, ParentID, DateFiled, Reason, AttachmentFile, Status) 
+       VALUES (?, ?, ?, ?, ?, 'Pending')`,
+      [studentId, parentId, dateFrom, reason, supportingDocumentPath || null]
+    );
+
+    const excuseLetterId = result.insertId;
+
+    // Create notifications for teachers who teach this student
+    if (subjectId) {
+      // Notify specific subject teacher
+      const [teacherRows] = await pool.execute(
+        `SELECT DISTINCT ts.TeacherID 
+         FROM teacherschedule ts
+         JOIN studentschedule ss ON ss.ScheduleID = ts.ScheduleID
+         WHERE ss.StudentID = ? AND ts.SubjectID = ?`,
+        [studentId, subjectId]
+      );
+
+      for (const teacher of teacherRows) {
+        await pool.execute(
+          `INSERT INTO notification 
+           (RecipientID, Message, Status) 
+           VALUES (?, ?, 'Unread')`,
+          [teacher.TeacherID, 'A new excuse letter requires your review']
+        );
+      }
+    } else {
+      // Notify all teachers who teach this student
+      const [teacherRows] = await pool.execute(
+        `SELECT DISTINCT ts.TeacherID 
+         FROM teacherschedule ts
+         JOIN studentschedule ss ON ss.ScheduleID = ts.ScheduleID
+         WHERE ss.StudentID = ?`,
+        [studentId]
+      );
+
+      for (const teacher of teacherRows) {
+        await pool.execute(
+          `INSERT INTO notification 
+           (RecipientID, Message, Status) 
+           VALUES (?, ?, 'Unread')`,
+          [teacher.TeacherID, 'A new excuse letter requires your review']
+        );
+      }
+    }
+
+    return res.status(201).json({ 
+      success: true, 
+      data: { excuseLetterId },
+      message: 'Excuse letter submitted successfully' 
+    });
+  } catch (error) {
+    console.error('Submit excuse letter error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Get excuse letter details
+router.get('/excuse-letters/:excuseLetterId', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const { excuseLetterId } = req.params;
+    const parentId = req.user.parentId;
+
+    const [rows] = await pool.execute(
+      `SELECT 
+        el.LetterID as excuseLetterId,
+        el.StudentID as studentId,
+        el.ParentID as parentId,
+        NULL as subjectId,
+        el.DateFiled as dateFrom,
+        el.DateFiled as dateTo,
+        el.Reason as reason,
+        el.AttachmentFile as supportingDocumentPath,
+        LOWER(el.Status) as status,
+        'parent' as submittedBy,
+        el.ParentID as submittedByUserId,
+        el.ReviewedBy as reviewedByUserId,
+        NULL as reviewNotes,
+        el.DateFiled as createdAt,
+        el.DateFiled as updatedAt,
+        el.ReviewedDate as reviewedAt,
+        sr.FullName as studentName,
+        sr.GradeLevel as gradeLevel,
+        sec.SectionName as sectionName,
+        NULL as subjectName,
+        COALESCE(tr.FullName, ua.Username) as reviewedByName
+      FROM excuseletter el
+      JOIN studentrecord sr ON sr.StudentID = el.StudentID
+      LEFT JOIN section sec ON sec.SectionID = sr.SectionID
+      LEFT JOIN teacherrecord tr ON tr.UserID = el.ReviewedBy
+      LEFT JOIN useraccount ua ON ua.UserID = el.ReviewedBy
+      WHERE el.LetterID = ? AND el.ParentID = ?`,
+      [excuseLetterId, parentId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Excuse letter not found' });
+    }
+
+    const excuseLetter = rows[0];
+
+    return res.json({ 
+      success: true, 
+      data: {
+        excuseLetterId: excuseLetter.excuseLetterId,
+        studentId: excuseLetter.studentId,
+        studentName: excuseLetter.studentName,
+        gradeLevel: excuseLetter.gradeLevel,
+        sectionName: excuseLetter.sectionName,
+        subjectId: excuseLetter.subjectId,
+        subjectName: excuseLetter.subjectName,
+        dateFrom: excuseLetter.dateFrom,
+        dateTo: excuseLetter.dateTo,
+        reason: excuseLetter.reason,
+        supportingDocumentPath: excuseLetter.supportingDocumentPath,
+        status: excuseLetter.status,
+        submittedBy: excuseLetter.submittedBy,
+        submittedByUserId: excuseLetter.submittedByUserId,
+        reviewedByUserId: excuseLetter.reviewedByUserId,
+        reviewedByName: excuseLetter.reviewedByName,
+        reviewNotes: excuseLetter.reviewNotes,
+        createdAt: excuseLetter.createdAt,
+        updatedAt: excuseLetter.updatedAt,
+        reviewedAt: excuseLetter.reviewedAt
+      }
+    });
+  } catch (error) {
+    console.error('Get excuse letter details error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });

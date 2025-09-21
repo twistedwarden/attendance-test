@@ -1,4 +1,4 @@
-import { Clock, Users, FileText, MessageSquare, Fingerprint, X } from 'lucide-react';
+import { Clock, Users, FileText, MessageSquare, Fingerprint, X, ClipboardList } from 'lucide-react';
 import { User } from '../../types';
 
 interface TeacherSidebarProps {
@@ -21,6 +21,12 @@ const menuItems = [
     label: 'My Students',
     icon: Users,
     description: 'Manage Class List'
+  },
+  {
+    id: 'excuse-letters',
+    label: 'Excuse Letters',
+    icon: ClipboardList,
+    description: 'Review & Submit'
   },
   {
     id: 'reports',
@@ -102,7 +108,6 @@ export default function TeacherSidebar({ activeSection, onSectionChange, isMobil
             <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
               <div className="text-sm">
                 <p className="font-medium text-gray-900">{user.name}</p>
-                <p className="text-green-600">{user.gradeLevel} - Section {user.section}</p>
               </div>
             </div>
 

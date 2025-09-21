@@ -1,46 +1,83 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, Calendar, BarChart3, FileText, TrendingUp, TrendingDown } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import TeacherService from './api/teacherService';
 
 export default function TeacherReportsView() {
   const { user } = useAuth();
-  const [selectedPeriod, setSelectedPeriod] = useState('week');
-  const [reportType, setReportType] = useState('attendance');
+  const [selectedPeriod, setSelectedPeriod] = useState<'day'|'today'|'week'|'month'|'quarter'|'year'>('week');
+  const [reportType, setReportType] = useState<'attendance'|'detailed'|'parent'>('attendance');
+  const [stats, setStats] = useState<{ totalStudents: number; averageAttendance: number; perfectAttendance: number; chronicAbsent: number; trend: number; } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [schedules, setSchedules] = useState<Array<{ id: number; subjectName: string; sectionName: string | null; gradeLevel: string | null }>>([]);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<number | undefined>(undefined);
+  const [gradeFilter, setGradeFilter] = useState<string>('');
 
-  const weeklyStats = {
-    totalStudents: 25,
-    averageAttendance: 94.2,
-    perfectAttendance: 18,
-    chronicAbsent: 1,
-    trend: 2.1
-  };
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const list = await TeacherService.getSchedules();
+        if (!mounted) return;
+        setSchedules(list.map(s => ({ id: s.id, subjectName: s.subjectName, sectionName: s.sectionName, gradeLevel: s.gradeLevel })));
+        // Default to first schedule if any
+        if (list.length > 0) setSelectedScheduleId(list[0].id);
+      } catch {}
+    })();
+    return () => { mounted = false; };
+  }, []);
 
-  const monthlyStats = {
-    totalStudents: 25,
-    averageAttendance: 93.8,
-    perfectAttendance: 15,
-    chronicAbsent: 2,
-    trend: -1.2
-  };
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await TeacherService.getReports({ period: selectedPeriod, scheduleId: selectedScheduleId, gradeLevel: gradeFilter || undefined });
+        if (isMounted) setStats(data);
+      } catch (e: any) {
+        if (isMounted) setError(e?.message || 'Failed to load reports');
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    })();
+    return () => { isMounted = false; };
+  }, [selectedPeriod, selectedScheduleId, gradeFilter]);
 
-  const currentStats = selectedPeriod === 'week' ? weeklyStats : monthlyStats;
+  const currentStats = stats || { totalStudents: 0, averageAttendance: 0, perfectAttendance: 0, chronicAbsent: 0, trend: 0 };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Class Reports</h2>
-        <p className="text-gray-600">{user?.gradeLevel} - Section {user?.section}</p>
+        <p className="text-gray-600">{user?.gradeLevel} - Section {schedules.find(s => s.id === selectedScheduleId)?.sectionName || 'All'}</p>
       </div>
 
       {/* Report Controls */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Section / Subject</label>
+            <select
+              value={selectedScheduleId ?? ''}
+              onChange={(e) => setSelectedScheduleId(e.target.value ? Number(e.target.value) : undefined)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            >
+              {schedules.length === 0 && <option value="">Loading schedules...</option>}
+              {schedules.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.sectionName ? `${s.sectionName} • ${s.subjectName}` : s.subjectName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-2">Report Period</label>
             <select
               value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
+              onChange={(e) => setSelectedPeriod(e.target.value as 'day'|'today'|'week'|'month'|'quarter'|'year')}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
             >
               <option value="week">This Week</option>
@@ -50,10 +87,23 @@ export default function TeacherReportsView() {
             </select>
           </div>
           <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Grade</label>
+            <select
+              value={gradeFilter}
+              onChange={(e) => setGradeFilter(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            >
+              <option value="">All Grades</option>
+              {[...new Set(schedules.map(s => s.gradeLevel).filter(Boolean))].map((g) => (
+                <option key={String(g)} value={String(g)}>{String(g)}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-2">Report Type</label>
             <select
               value={reportType}
-              onChange={(e) => setReportType(e.target.value)}
+              onChange={(e) => setReportType(e.target.value as 'attendance'|'detailed'|'parent')}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
             >
               <option value="attendance">Attendance Summary</option>
@@ -62,7 +112,13 @@ export default function TeacherReportsView() {
             </select>
           </div>
           <div className="flex items-end">
-            <button className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+            <button
+              onClick={() => {
+                const label = reportType === 'attendance' ? 'attendance' : 'student-list';
+                TeacherService.exportReport(label as 'attendance'|'student-list', { period: selectedPeriod, scheduleId: selectedScheduleId, gradeLevel: gradeFilter || undefined }).catch(() => {});
+              }}
+              className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+            >
               <Download className="h-4 w-4" />
               <span>Export</span>
             </button>
@@ -76,7 +132,7 @@ export default function TeacherReportsView() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Students</p>
-              <p className="text-2xl font-bold text-gray-900">{currentStats.totalStudents}</p>
+              <p className="text-2xl font-bold text-gray-900">{loading ? '...' : currentStats.totalStudents}</p>
             </div>
             <BarChart3 className="h-8 w-8 text-blue-500" />
           </div>
@@ -86,7 +142,7 @@ export default function TeacherReportsView() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Average Attendance</p>
-              <p className="text-2xl font-bold text-green-600">{currentStats.averageAttendance}%</p>
+              <p className="text-2xl font-bold text-green-600">{loading ? '...' : `${currentStats.averageAttendance}%`}</p>
               <div className="flex items-center mt-1">
                 {currentStats.trend > 0 ? (
                   <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
@@ -110,9 +166,9 @@ export default function TeacherReportsView() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Perfect Attendance</p>
-              <p className="text-2xl font-bold text-blue-600">{currentStats.perfectAttendance}</p>
+              <p className="text-2xl font-bold text-blue-600">{loading ? '...' : currentStats.perfectAttendance}</p>
               <p className="text-xs text-gray-500 mt-1">
-                {Math.round((currentStats.perfectAttendance / currentStats.totalStudents) * 100)}% of class
+                {currentStats.totalStudents > 0 ? Math.round((currentStats.perfectAttendance / currentStats.totalStudents) * 100) : 0}% of class
               </p>
             </div>
             <Calendar className="h-8 w-8 text-blue-500" />
@@ -123,9 +179,9 @@ export default function TeacherReportsView() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Chronic Absent</p>
-              <p className="text-2xl font-bold text-red-600">{currentStats.chronicAbsent}</p>
+              <p className="text-2xl font-bold text-red-600">{loading ? '...' : currentStats.chronicAbsent}</p>
               <p className="text-xs text-gray-500 mt-1">
-                {Math.round((currentStats.chronicAbsent / currentStats.totalStudents) * 100)}% of class
+                {currentStats.totalStudents > 0 ? Math.round((currentStats.chronicAbsent / currentStats.totalStudents) * 100) : 0}% of class
               </p>
             </div>
             <div className="text-red-500">
@@ -156,7 +212,10 @@ export default function TeacherReportsView() {
                     <p className="text-xs text-gray-500">Available in: PDF, Excel</p>
                   </div>
                 </div>
-                <button className="text-green-600 hover:text-green-700 p-2">
+                <button
+                  onClick={() => TeacherService.exportReport('attendance', { period: selectedPeriod, scheduleId: selectedScheduleId }).catch(() => {})}
+                  className="text-green-600 hover:text-green-700 p-2"
+                >
                   <Download className="h-4 w-4" />
                 </button>
               </div>
@@ -174,7 +233,10 @@ export default function TeacherReportsView() {
                     <p className="text-xs text-gray-500">Available in: PDF, Excel</p>
                   </div>
                 </div>
-                <button className="text-blue-600 hover:text-blue-700 p-2">
+                <button
+                  onClick={() => TeacherService.exportReport('attendance', { period: 'week', scheduleId: selectedScheduleId }).catch(() => {})}
+                  className="text-blue-600 hover:text-blue-700 p-2"
+                >
                   <Download className="h-4 w-4" />
                 </button>
               </div>
@@ -192,7 +254,10 @@ export default function TeacherReportsView() {
                     <p className="text-xs text-gray-500">Available in: PDF, Excel</p>
                   </div>
                 </div>
-                <button className="text-purple-600 hover:text-purple-700 p-2">
+                <button
+                  onClick={() => TeacherService.exportReport('attendance', { period: 'month', scheduleId: selectedScheduleId }).catch(() => {})}
+                  className="text-purple-600 hover:text-purple-700 p-2"
+                >
                   <Download className="h-4 w-4" />
                 </button>
               </div>
@@ -210,7 +275,10 @@ export default function TeacherReportsView() {
                     <p className="text-xs text-gray-500">Available in: PDF, Excel</p>
                   </div>
                 </div>
-                <button className="text-orange-600 hover:text-orange-700 p-2">
+                <button
+                  onClick={() => TeacherService.exportReport('student-list', { period: selectedPeriod, scheduleId: selectedScheduleId }).catch(() => {})}
+                  className="text-orange-600 hover:text-orange-700 p-2"
+                >
                   <Download className="h-4 w-4" />
                 </button>
               </div>

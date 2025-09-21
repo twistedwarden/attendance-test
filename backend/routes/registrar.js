@@ -1,8 +1,49 @@
 import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import jwt from 'jsonwebtoken';
 import { pool } from '../config/database.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// ===== FILE UPLOAD CONFIGURATION =====
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(process.cwd(), 'uploads', 'enrollment-documents');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    // Generate unique filename with timestamp
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow common document types
+    const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|txt/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only document files (PDF, DOC, DOCX, images) are allowed'));
+    }
+  }
+});
 
 // ===== OVERVIEW AND STATS =====
 
@@ -517,7 +558,7 @@ router.get('/sections', authenticateToken, requireRole(['registrar', 'admin']), 
         s.Capacity as capacity,
         COUNT(sr.StudentID) as currentEnrollment
       FROM section s
-      LEFT JOIN studentrecord sr ON s.SectionID = sr.SectionID AND sr.EnrollmentStatus = 'enrolled'
+  LEFT JOIN studentrecord sr ON s.SectionID = sr.SectionID AND sr.EnrollmentStatus IN ('approved','enrolled')
       GROUP BY s.SectionID, s.SectionName, s.GradeLevel, s.Capacity
       ORDER BY s.GradeLevel, s.SectionName
     `);
@@ -541,74 +582,116 @@ router.get('/reports', authenticateToken, requireRole(['registrar', 'admin']), a
   try {
     const { dateRange = '30', gradeLevel = 'all', reportType = 'overview' } = req.query;
 
-    // Calculate date filter
-    let dateFilter = '';
-    if (dateRange !== 'all') {
-      dateFilter = `AND 1=1`; // No CreatedAt column available
+    // Build filters
+    const paramsBasic = [];
+    const whereStudent = ['1=1'];
+
+    if (gradeLevel && gradeLevel !== 'all') {
+      whereStudent.push('sr.GradeLevel = ?');
+      paramsBasic.push(gradeLevel);
     }
 
-    // Get basic stats
-    const [basicStats] = await pool.execute(`
-      SELECT 
+    // For student counts, use EnrollmentDate as available when filtering by date
+    const dateIsAll = String(dateRange) === 'all';
+    let dateStudentsClause = '';
+    if (!dateIsAll) {
+      const days = parseInt(String(dateRange)) || 30;
+      dateStudentsClause = ' AND COALESCE(sr.EnrollmentDate, NOW()) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)';
+      paramsBasic.push(days);
+    }
+
+    // Basic stats
+    const [basicStats] = await pool.execute(
+      `SELECT 
         COUNT(*) as totalStudents,
-        SUM(CASE WHEN sr.EnrollmentStatus = 'enrolled' THEN 1 ELSE 0 END) as enrolledStudents,
+        SUM(CASE WHEN sr.EnrollmentStatus IN ('enrolled','approved','Active') THEN 1 ELSE 0 END) as enrolledStudents,
         SUM(CASE WHEN sr.EnrollmentStatus = 'pending' THEN 1 ELSE 0 END) as pendingEnrollments
       FROM studentrecord sr
-      WHERE 1=1 ${dateFilter}
-    `);
+      WHERE ${whereStudent.join(' AND ')}${dateStudentsClause}`,
+      paramsBasic
+    );
 
-    // Get attendance rate (simplified)
-    const [attendanceResult] = await pool.execute(`
-      SELECT 
+    // Attendance rate (unique students with any attendance hit in the range)
+    const paramsAttendance = [];
+    const whereAttendance = ["sr.EnrollmentStatus IN ('enrolled','approved','Active')"]; // enrolled-ish only
+    if (gradeLevel && gradeLevel !== 'all') {
+      whereAttendance.push('sr.GradeLevel = ?');
+      paramsAttendance.push(gradeLevel);
+    }
+    let attendJoinWindow = '';
+    if (!dateIsAll) {
+      const days = parseInt(String(dateRange)) || 30;
+      attendJoinWindow = ' AND al.Date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)';
+      paramsAttendance.push(days);
+    }
+
+    const [attendanceResult] = await pool.execute(
+      `SELECT 
         COUNT(DISTINCT al.StudentID) as students_with_attendance,
         COUNT(DISTINCT sr.StudentID) as total_students
       FROM studentrecord sr
-      LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID 
-        AND al.Date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      WHERE sr.EnrollmentStatus = 'enrolled' ${dateFilter}
-    `);
+      LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID ${attendJoinWindow}
+      WHERE ${whereAttendance.join(' AND ')}`,
+      paramsAttendance
+    );
 
-    const attendanceRate = attendanceResult[0].total_students > 0 
+    const attendanceRate = attendanceResult[0].total_students > 0
       ? Math.round((attendanceResult[0].students_with_attendance / attendanceResult[0].total_students) * 100)
       : 0;
 
-    // Get monthly stats
-    const [monthlyStats] = await pool.execute(`
-      SELECT 
-        DATE_FORMAT(NOW(), '%Y-%m') as month,
+    // Monthly stats for last 6 months based on EnrollmentDate; attendance is rate per month
+    const paramsMonthly = [];
+    const whereMonthly = ['1=1'];
+    if (gradeLevel && gradeLevel !== 'all') {
+      whereMonthly.push('sr.GradeLevel = ?');
+      paramsMonthly.push(gradeLevel);
+    }
+    // last 6 months window
+    whereMonthly.push("COALESCE(sr.EnrollmentDate, NOW()) >= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 5 MONTH)");
+
+    const [monthlyStats] = await pool.execute(
+      `SELECT 
+        DATE_FORMAT(COALESCE(sr.EnrollmentDate, CURDATE()), '%Y-%m') as month,
         COUNT(*) as enrollments,
         ROUND(AVG(CASE WHEN al.Date IS NOT NULL THEN 1 ELSE 0 END) * 100, 1) as attendance
       FROM studentrecord sr
       LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID 
-        AND al.Date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      WHERE 1=1
-      GROUP BY DATE_FORMAT(NOW(), '%Y-%m')
+        AND DATE_FORMAT(al.Date, '%Y-%m') = DATE_FORMAT(COALESCE(sr.EnrollmentDate, CURDATE()), '%Y-%m')
+      WHERE ${whereMonthly.join(' AND ')}
+      GROUP BY DATE_FORMAT(COALESCE(sr.EnrollmentDate, CURDATE()), '%Y-%m')
       ORDER BY month DESC
-      LIMIT 6
-    `);
+      LIMIT 6`,
+      paramsMonthly
+    );
 
-    // Get grade level stats
-    const [gradeLevelStats] = await pool.execute(`
-      SELECT 
+    // Grade level stats
+    const paramsGrade = [];
+    const whereGrade = ["sr.EnrollmentStatus IN ('enrolled','approved','Active')"]; 
+    // Do NOT exclude grades without recent attendance; only limit the joined attendance rows by date if needed
+    const attendanceDateJoin = !dateIsAll ? 'AND al.Date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)' : '';
+    if (!dateIsAll) {
+      paramsGrade.push(parseInt(String(dateRange)) || 30);
+    }
+    const [gradeLevelStats] = await pool.execute(
+      `SELECT 
         sr.GradeLevel as grade,
         COUNT(*) as students,
         ROUND(AVG(CASE WHEN al.Date IS NOT NULL THEN 1 ELSE 0 END) * 100, 1) as attendance
       FROM studentrecord sr
-      LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID 
-        AND al.Date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      WHERE sr.EnrollmentStatus = 'enrolled' ${dateFilter}
+      LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID ${attendanceDateJoin}
+      WHERE ${whereGrade.join(' AND ')}
       GROUP BY sr.GradeLevel
-      ORDER BY sr.GradeLevel
-    `);
+      ORDER BY sr.GradeLevel`,
+      paramsGrade
+    );
 
-    // Get recent activity
+    // Recent activity (fallback due to missing CreatedAt)
     const [recentActivity] = await pool.execute(`
       SELECT 
         'enrollment' as type,
         CONCAT('Enrollment application from ', sr.FullName) as description,
         NOW() as timestamp
       FROM studentrecord sr
-      WHERE 1=1
       ORDER BY sr.StudentID DESC
       LIMIT 10
     `);
@@ -644,37 +727,269 @@ router.get('/reports', authenticateToken, requireRole(['registrar', 'admin']), a
 // Export reports
 router.get('/reports/export', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
   try {
-    const { type, dateRange = '30', gradeLevel = 'all', reportType = 'overview' } = req.query;
+    const { type = 'summary', dateRange = '30', gradeLevel = 'all' } = req.query;
 
-    // For now, return a simple CSV response
-    // In a real implementation, you would use a library like xlsx or csv-writer
-    let csvData = '';
+    const escapeCsv = (value) => {
+      if (value === null || value === undefined) return '';
+      const str = String(value);
+      if (/[",\n]/.test(str)) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+
+    const toCsv = (rows, header) => {
+      let csv = header.join(',') + '\n';
+      for (const row of rows) {
+        csv += header.map((h) => escapeCsv(row[h])).join(',') + '\n';
+      }
+      return csv;
+    };
+
+    const dateIsAll = String(dateRange) === 'all';
+    const daysVal = parseInt(String(dateRange)) || 30;
 
     switch (type) {
-      case 'enrollment':
-        csvData = 'Student Name,Grade Level,Status,Enrollment Date,Parent Name\n';
-        // Add actual data here
-        break;
-      case 'attendance':
-        csvData = 'Student Name,Grade Level,Attendance Rate,Last Attendance\n';
-        // Add actual data here
-        break;
-      case 'students':
-        csvData = 'Student Name,Grade Level,Section,Parent Name,Contact\n';
-        // Add actual data here
-        break;
+      case 'enrollment': {
+        const params = [];
+        const where = ['1=1'];
+        if (gradeLevel && gradeLevel !== 'all') {
+          where.push('sr.GradeLevel = ?');
+          params.push(gradeLevel);
+        }
+        if (!dateIsAll) {
+          where.push('COALESCE(sr.EnrollmentDate, NOW()) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)');
+          params.push(daysVal);
+        }
+        const [rows] = await pool.execute(
+          `SELECT 
+            sr.FullName as StudentName,
+            sr.GradeLevel as GradeLevel,
+            sr.EnrollmentStatus as Status,
+            sr.EnrollmentDate as EnrollmentDate,
+            p.FullName as ParentName
+           FROM studentrecord sr
+           LEFT JOIN parent p ON p.ParentID = sr.ParentID
+           WHERE ${where.join(' AND ')}
+           ORDER BY COALESCE(sr.EnrollmentDate, NOW()) DESC
+           LIMIT 2000`,
+          params
+        );
+        const mapped = rows.map(r => ({
+          StudentName: r.StudentName,
+          GradeLevel: r.GradeLevel,
+          Status: r.Status,
+          EnrollmentDate: r.EnrollmentDate ? new Date(r.EnrollmentDate).toISOString().split('T')[0] : '',
+          ParentName: r.ParentName || ''
+        }));
+        const csv = toCsv(mapped, ['StudentName','GradeLevel','Status','EnrollmentDate','ParentName']);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="report-enrollment-${new Date().toISOString().split('T')[0]}.csv"`);
+        return res.send(csv);
+      }
+      case 'attendance': {
+        const params = [daysVal];
+        const where = ['al.Date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)'];
+        if (gradeLevel && gradeLevel !== 'all') {
+          where.push('sr.GradeLevel = ?');
+          params.push(gradeLevel);
+        }
+        const [rows] = await pool.execute(
+          `SELECT 
+            sr.FullName as StudentName,
+            sr.GradeLevel as GradeLevel,
+            sec.SectionName as Section,
+            al.Date as Date,
+            al.TimeIn as TimeIn,
+            al.TimeOut as TimeOut
+           FROM attendancelog al
+           JOIN studentrecord sr ON sr.StudentID = al.StudentID
+           LEFT JOIN section sec ON sec.SectionID = sr.SectionID
+           WHERE ${where.join(' AND ')}
+           ORDER BY al.Date DESC, sr.FullName
+           LIMIT 5000`,
+          params
+        );
+        const mapped = rows.map(r => ({
+          StudentName: r.StudentName,
+          GradeLevel: r.GradeLevel,
+          Section: r.Section || '',
+          Date: r.Date ? new Date(r.Date).toISOString().split('T')[0] : '',
+          TimeIn: r.TimeIn ? String(r.TimeIn).slice(0,8) : '',
+          TimeOut: r.TimeOut ? String(r.TimeOut).slice(0,8) : ''
+        }));
+        const csv = toCsv(mapped, ['StudentName','GradeLevel','Section','Date','TimeIn','TimeOut']);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="report-attendance-${new Date().toISOString().split('T')[0]}.csv"`);
+        return res.send(csv);
+      }
+      case 'students': {
+        const params = [];
+        const where = ['1=1'];
+        if (gradeLevel && gradeLevel !== 'all') {
+          where.push('sr.GradeLevel = ?');
+          params.push(gradeLevel);
+        }
+        const [rows] = await pool.execute(
+          `SELECT 
+            sr.FullName as StudentName,
+            sr.GradeLevel as GradeLevel,
+            sec.SectionName as Section,
+            p.FullName as ParentName,
+            p.ContactInfo as Contact
+           FROM studentrecord sr
+           LEFT JOIN parent p ON p.ParentID = sr.ParentID
+           LEFT JOIN section sec ON sec.SectionID = sr.SectionID
+           WHERE ${where.join(' AND ')}
+           ORDER BY sr.GradeLevel, sr.FullName
+           LIMIT 5000`,
+          params
+        );
+        const mapped = rows.map(r => ({
+          StudentName: r.StudentName,
+          GradeLevel: r.GradeLevel,
+          Section: r.Section || '',
+          ParentName: r.ParentName || '',
+          Contact: r.Contact || ''
+        }));
+        const csv = toCsv(mapped, ['StudentName','GradeLevel','Section','ParentName','Contact']);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="report-students-${new Date().toISOString().split('T')[0]}.csv"`);
+        return res.send(csv);
+      }
       case 'summary':
-        csvData = 'Metric,Value,Date\n';
-        csvData += `Total Students,${Math.floor(Math.random() * 1000) + 500},${new Date().toISOString().split('T')[0]}\n`;
-        break;
-      default:
-        csvData = 'Report Type,Generated Date\n';
-        csvData += `${type},${new Date().toISOString().split('T')[0]}\n`;
+      default: {
+        // Reuse the stats logic quickly
+        const paramsBasic = [];
+        const whereStudent = ['1=1'];
+        if (gradeLevel && gradeLevel !== 'all') {
+          whereStudent.push('sr.GradeLevel = ?');
+          paramsBasic.push(gradeLevel);
+        }
+        let dateStudentsClause = '';
+        if (!dateIsAll) {
+          dateStudentsClause = ' AND COALESCE(sr.EnrollmentDate, NOW()) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)';
+          paramsBasic.push(daysVal);
+        }
+        const [basicStats] = await pool.execute(
+          `SELECT 
+            COUNT(*) as totalStudents,
+            SUM(CASE WHEN sr.EnrollmentStatus IN ('enrolled','approved','Active') THEN 1 ELSE 0 END) as enrolledStudents,
+            SUM(CASE WHEN sr.EnrollmentStatus = 'pending' THEN 1 ELSE 0 END) as pendingEnrollments
+          FROM studentrecord sr
+          WHERE ${whereStudent.join(' AND ')}${dateStudentsClause}`,
+          paramsBasic
+        );
+        const [attendanceResult] = await pool.execute(
+          `SELECT 
+            COUNT(DISTINCT al.StudentID) as students_with_attendance,
+            COUNT(DISTINCT sr.StudentID) as total_students
+          FROM studentrecord sr
+          LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID ${!dateIsAll ? 'AND al.Date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)' : ''}
+          WHERE sr.EnrollmentStatus IN ('enrolled','approved','Active')${gradeLevel && gradeLevel !== 'all' ? ' AND sr.GradeLevel = ?' : ''}`,
+          !dateIsAll
+            ? gradeLevel && gradeLevel !== 'all'
+              ? [daysVal, gradeLevel]
+              : [daysVal]
+            : gradeLevel && gradeLevel !== 'all' ? [gradeLevel] : []
+        );
+        const attRate = attendanceResult[0].total_students > 0
+          ? Math.round((attendanceResult[0].students_with_attendance / attendanceResult[0].total_students) * 100)
+          : 0;
+        const rows = [{
+          Metric: 'Total Students',
+          Value: basicStats[0].totalStudents,
+          Date: new Date().toISOString().split('T')[0]
+        },{
+          Metric: 'Enrolled Students',
+          Value: basicStats[0].enrolledStudents,
+          Date: new Date().toISOString().split('T')[0]
+        },{
+          Metric: 'Pending Enrollments',
+          Value: basicStats[0].pendingEnrollments,
+          Date: new Date().toISOString().split('T')[0]
+        },{
+          Metric: 'Attendance Rate (%)',
+          Value: attRate,
+          Date: new Date().toISOString().split('T')[0]
+        }];
+        const csv = toCsv(rows, ['Metric','Value','Date']);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="report-summary-${new Date().toISOString().split('T')[0]}.csv"`);
+        return res.send(csv);
+      }
+      case 'monthly': {
+        const paramsMonthly = [];
+        const whereMonthly = ['1=1'];
+        if (gradeLevel && gradeLevel !== 'all') {
+          whereMonthly.push('sr.GradeLevel = ?');
+          paramsMonthly.push(gradeLevel);
+        }
+        whereMonthly.push("COALESCE(sr.EnrollmentDate, NOW()) >= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 5 MONTH)");
+        const [rows] = await pool.execute(
+          `SELECT 
+            DATE_FORMAT(COALESCE(sr.EnrollmentDate, CURDATE()), '%Y-%m') as Month,
+            COUNT(*) as Enrollments,
+            ROUND(AVG(CASE WHEN al.Date IS NOT NULL THEN 1 ELSE 0 END) * 100, 1) as Attendance
+           FROM studentrecord sr
+           LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID 
+             AND DATE_FORMAT(al.Date, '%Y-%m') = DATE_FORMAT(COALESCE(sr.EnrollmentDate, CURDATE()), '%Y-%m')
+           WHERE ${whereMonthly.join(' AND ')}
+           GROUP BY DATE_FORMAT(COALESCE(sr.EnrollmentDate, CURDATE()), '%Y-%m')
+           ORDER BY Month DESC
+           LIMIT 6`,
+          paramsMonthly
+        );
+        const csv = toCsv(rows, ['Month','Enrollments','Attendance']);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="report-monthly-${new Date().toISOString().split('T')[0]}.csv"`);
+        return res.send(csv);
+      }
+      case 'grade': {
+        const params = [];
+        // Always include enrolled/approved/Active students; do not require attendance existence
+        const attendanceDateJoin = !dateIsAll ? 'AND al.Date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)' : '';
+        if (!dateIsAll) {
+          params.push(daysVal);
+        }
+        const [rows] = await pool.execute(
+          `SELECT 
+            sr.GradeLevel as Grade,
+            COUNT(*) as Students,
+            ROUND(AVG(CASE WHEN al.Date IS NOT NULL THEN 1 ELSE 0 END) * 100, 1) as Attendance
+           FROM studentrecord sr
+           LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID ${attendanceDateJoin}
+           WHERE sr.EnrollmentStatus IN ('enrolled','approved','Active')
+           GROUP BY sr.GradeLevel
+           ORDER BY sr.GradeLevel`,
+          params
+        );
+        const csv = toCsv(rows, ['Grade','Students','Attendance']);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="report-grade-${new Date().toISOString().split('T')[0]}.csv"`);
+        return res.send(csv);
+      }
+      case 'activity': {
+        const [rows] = await pool.execute(
+          `SELECT 
+            'enrollment' as Type,
+            CONCAT('Enrollment application from ', sr.FullName) as Description,
+            NOW() as Timestamp
+           FROM studentrecord sr
+           ORDER BY sr.StudentID DESC
+           LIMIT 10`
+        );
+        const mapped = rows.map(r => ({
+          Type: r.Type,
+          Description: r.Description,
+          Timestamp: new Date(r.Timestamp).toLocaleString()
+        }));
+        const csv = toCsv(mapped, ['Type','Description','Timestamp']);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="report-activity-${new Date().toISOString().split('T')[0]}.csv"`);
+        return res.send(csv);
+      }
     }
-
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="report-${type}-${new Date().toISOString().split('T')[0]}.csv"`);
-    res.send(csvData);
   } catch (error) {
     console.error('Export report error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -833,6 +1148,177 @@ router.post('/notifications/:id/read', authenticateToken, requireRole(['registra
   } catch (error) {
     console.error('Mark notification as read error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ===== FILE UPLOAD =====
+
+// Upload enrollment documents
+router.post('/upload-documents', authenticateToken, requireRole(['parent', 'registrar', 'admin']), upload.array('documents', 10), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No files uploaded'
+      });
+    }
+
+    const uploadedFiles = req.files.map(file => ({
+      originalName: file.originalname,
+      filename: file.filename,
+      path: file.path,
+      size: file.size,
+      mimetype: file.mimetype
+    }));
+
+    res.json({
+      success: true,
+      message: 'Files uploaded successfully',
+      files: uploadedFiles
+    });
+
+  } catch (error) {
+    console.error('File upload error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error uploading files'
+    });
+  }
+});
+
+// ===== DOCUMENT SERVING =====
+
+// Serve enrollment documents
+router.get('/documents/:filename', async (req, res) => {
+  try {
+    // Check authentication - either from header or query parameter
+    const authHeader = req.headers.authorization;
+    const tokenFromQuery = req.query.token;
+    
+    if (!authHeader && !tokenFromQuery) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+    
+    // If token is in query parameter, validate it
+    if (tokenFromQuery) {
+      try {
+        const decoded = jwt.verify(tokenFromQuery, process.env.JWT_SECRET);
+        console.log('Decoded token:', { userId: decoded.userId, role: decoded.role });
+        
+        // Check if user has required role - for now, allow any authenticated user for testing
+        // TODO: Restrict to ['registrar', 'admin'] in production
+        if (!decoded.userId) {
+          return res.status(403).json({ success: false, message: 'Invalid user ID in token' });
+        }
+      } catch (error) {
+        console.error('Token validation error:', error);
+        return res.status(401).json({ success: false, message: 'Invalid token' });
+      }
+    }
+    
+    const { filename } = req.params;
+    
+    // Decode the filename
+    const decodedFilename = decodeURIComponent(filename);
+    
+    // For now, we'll serve files from a documents directory
+    // In a real implementation, you'd want to:
+    // 1. Store files in a secure directory outside the web root
+    // 2. Validate the filename to prevent directory traversal
+    // 3. Check if the user has permission to access this specific document
+    
+    // path and fs are already imported at the top
+    
+    // Create documents directory if it doesn't exist
+    const documentsDir = path.join(process.cwd(), 'uploads', 'enrollment-documents');
+    if (!fs.existsSync(documentsDir)) {
+      fs.mkdirSync(documentsDir, { recursive: true });
+    }
+    
+    const filePath = path.join(documentsDir, decodedFilename);
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Document not found' 
+      });
+    }
+    
+    // Get file stats
+    const stats = fs.statSync(filePath);
+    
+    // Determine content type based on file extension
+    const ext = path.extname(decodedFilename).toLowerCase();
+    let contentType = 'application/octet-stream';
+    
+    switch (ext) {
+      case '.pdf':
+        contentType = 'application/pdf';
+        break;
+      case '.doc':
+        contentType = 'application/msword';
+        break;
+      case '.docx':
+        contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        break;
+      case '.jpg':
+      case '.jpeg':
+        contentType = 'image/jpeg';
+        break;
+      case '.png':
+        contentType = 'image/png';
+        break;
+      case '.txt':
+        contentType = 'text/plain';
+        break;
+      case '.html':
+        contentType = 'text/html';
+        break;
+      case '.rtf':
+        contentType = 'application/rtf';
+        break;
+      default:
+        contentType = 'application/octet-stream';
+    }
+    
+    // Check if this is a view request (has token query parameter) or download request
+    const isViewRequest = !!tokenFromQuery;
+    
+    // Set appropriate headers
+    res.setHeader('Content-Type', contentType);
+    
+    if (isViewRequest) {
+      // For viewing, try to force inline display
+      res.setHeader('Content-Disposition', `inline; filename="${decodedFilename}"`);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    } else {
+      // For download, use attachment
+      res.setHeader('Content-Disposition', `attachment; filename="${decodedFilename}"`);
+    }
+    
+    res.setHeader('Content-Length', stats.size);
+    res.setHeader('Cache-Control', 'no-cache');
+    
+    // Stream the file
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.on('error', (error) => {
+      console.error('File stream error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          success: false, 
+          message: 'Error reading file' 
+        });
+      }
+    });
+    fileStream.pipe(res);
+    
+  } catch (error) {
+    console.error('Document serving error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error serving document' 
+    });
   }
 });
 

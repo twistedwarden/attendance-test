@@ -1,3 +1,5 @@
+import { ExcuseLetter, ExcuseLetterFormData, ExcuseLetterReviewData } from '../../../types';
+
 const API_BASE_URL = 'http://localhost:5000/api';
 
 const getToken = (): string | null => localStorage.getItem('auth_token');
@@ -83,6 +85,122 @@ export const TeacherService = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to fetch student details');
     return data.data;
+  },
+
+  // ===== EXCUSE LETTER METHODS =====
+
+  // Get excuse letters for teacher's students
+  async getExcuseLetters(studentId?: number, status?: string, subjectId?: number, limit: number = 50): Promise<ExcuseLetter[]> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    const params = new URLSearchParams();
+    if (studentId) params.set('studentId', studentId.toString());
+    if (status) params.set('status', status);
+    if (subjectId) params.set('subjectId', subjectId.toString());
+    params.set('limit', limit.toString());
+    
+    const res = await fetch(`${API_BASE_URL}/teacher/excuse-letters?${params.toString()}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch excuse letters');
+    
+    return data.data || [];
+  },
+
+  // Get excuse letter details
+  async getExcuseLetterDetails(excuseLetterId: number): Promise<ExcuseLetter> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    const res = await fetch(`${API_BASE_URL}/teacher/excuse-letters/${excuseLetterId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch excuse letter details');
+    
+    return data.data;
+  },
+
+  // Submit excuse letter (for teachers)
+  async submitExcuseLetter(formData: ExcuseLetterFormData): Promise<{ excuseLetterId: number }> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    const res = await fetch(`${API_BASE_URL}/teacher/excuse-letters`, {
+      method: 'POST',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(formData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to submit excuse letter');
+    
+    return data.data;
+  },
+
+  // Review excuse letter (approve/decline)
+  async reviewExcuseLetter(excuseLetterId: number, reviewData: ExcuseLetterReviewData): Promise<void> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    const res = await fetch(`${API_BASE_URL}/teacher/excuse-letters/${excuseLetterId}/review`, {
+      method: 'POST',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(reviewData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to review excuse letter');
+  },
+
+  // ===== REPORTS METHODS =====
+  async getReports(params: { period: 'day'|'today'|'week'|'month'|'quarter'|'year'; scheduleId?: number; gradeLevel?: string }): Promise<{ totalStudents: number; averageAttendance: number; perfectAttendance: number; chronicAbsent: number; trend: number; }> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const search = new URLSearchParams();
+    search.set('period', params.period);
+    if (params.scheduleId) search.set('scheduleId', String(params.scheduleId));
+    if (params.gradeLevel) search.set('gradeLevel', params.gradeLevel);
+    const res = await fetch(`${API_BASE_URL}/teacher/reports?${search.toString()}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch reports');
+    return data.data;
+  },
+
+  async exportReport(label: 'attendance'|'student-list', params: { period: 'day'|'today'|'week'|'month'|'quarter'|'year'; scheduleId?: number; gradeLevel?: string }): Promise<void> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const search = new URLSearchParams();
+    search.set('label', label);
+    search.set('period', params.period);
+    if (params.scheduleId) search.set('scheduleId', String(params.scheduleId));
+    if (params.gradeLevel) search.set('gradeLevel', params.gradeLevel);
+    const res = await fetch(`${API_BASE_URL}/teacher/reports/export?${search.toString()}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      const data = await res.text();
+      throw new Error(`Failed to export report: ${res.status} ${res.statusText} ${data}`);
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `teacher-${label}-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    }, 0);
   }
 };
 

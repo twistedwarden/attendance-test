@@ -1,17 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import TeacherService, { TeacherSchedule, TeacherStudent } from './api/teacherService';
 import TeacherSidebar from './TeacherSidebar';
 import TeacherHeader from './TeacherHeader';
 import TeacherAttendanceView from './TeacherAttendanceView';
 import TeacherStudentsView from './TeacherStudentsView';
 import TeacherReportsView from './TeacherReportsView';
 import TeacherNotificationsView from './TeacherNotificationsView';
+import { TeacherExcuseLetterView } from './components/TeacherExcuseLetterView';
 import AccountSettings from '../admin/components/AccountSettings';
 
 export default function TeacherDashboard() {
   const { user } = useAuth();
   const [activeSection, setActiveSection] = useState('attendance');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [schedules, setSchedules] = useState<TeacherSchedule[]>([]);
+  const [students, setStudents] = useState<TeacherStudent[]>([]);
+
+  useEffect(() => {
+    const loadTeacherData = async () => {
+      try {
+        const [schedulesData, studentsData] = await Promise.all([
+          TeacherService.getSchedules(),
+          TeacherService.getStudents(1) // Default to first schedule, will be updated
+        ]);
+        setSchedules(schedulesData);
+        setStudents(studentsData);
+      } catch (error) {
+        console.error('Error loading teacher data:', error);
+      }
+    };
+
+    if (user?.role === 'teacher') {
+      loadTeacherData();
+    }
+  }, [user]);
 
   const toggleMobileSidebar = () => {
     setIsMobileSidebarOpen(!isMobileSidebarOpen);
@@ -31,6 +54,8 @@ export default function TeacherDashboard() {
         return <TeacherReportsView />;
       case 'notifications':
         return <TeacherNotificationsView />;
+      case 'excuse-letters':
+        return <TeacherExcuseLetterView schedules={schedules as any} students={students} />;
       case 'settings':
         return <AccountSettings showNameField={false} />;
       default:

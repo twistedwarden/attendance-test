@@ -203,6 +203,241 @@ router.post('/subject-attendance', async (req, res) => {
   }
 });
 
+// ===== REPORTS (Teacher-scoped) =====
+
+// Get reports summary for the logged-in teacher
+router.get('/reports', async (req, res) => {
+  try {
+    const teacherUserId = req.user.userId;
+    const { period = 'week', scheduleId, gradeLevel } = req.query;
+
+    // Optional: scope by scheduleId if provided and owned by teacher
+    let subjectIdFilter = '';
+    let params = [teacherUserId];
+    if (scheduleId) {
+      const [schedRows] = await pool.execute(
+        `SELECT SubjectID FROM teacherschedule WHERE ScheduleID = ? AND TeacherID = ? LIMIT 1`,
+        [Number(scheduleId), teacherUserId]
+      );
+      if (!Array.isArray(schedRows) || schedRows.length === 0) {
+        return res.status(403).json({ success: false, message: 'You do not have access to this schedule' });
+      }
+      subjectIdFilter = ' AND sa.SubjectID = ?';
+      params.push(schedRows[0].SubjectID);
+    }
+
+    // Date window
+    let dateFilter = '';
+    const now = new Date();
+    const toDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const from = new Date(now);
+    switch (String(period)) {
+      case 'day':
+      case 'today':
+        // keep same day
+        break;
+      case 'month':
+        from.setDate(from.getDate() - 30);
+        break;
+      case 'quarter':
+        from.setDate(from.getDate() - 90);
+        break;
+      case 'year':
+        from.setDate(from.getDate() - 365);
+        break;
+      case 'week':
+      default:
+        from.setDate(from.getDate() - 7);
+        break;
+    }
+    const fromDate = `${from.getFullYear()}-${String(from.getMonth()+1).padStart(2,'0')}-${String(from.getDate()).padStart(2,'0')}`;
+    dateFilter = ' AND sa.Date BETWEEN ? AND ?';
+
+    // Get students under this teacher (optionally by schedule)
+    let studentScopeSql = `
+      SELECT DISTINCT ss.StudentID
+      FROM studentschedule ss
+      JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+      LEFT JOIN section sec ON sec.SectionID = ts.SectionID
+      WHERE ts.TeacherID = ?`;
+    const studentScopeParams = [teacherUserId];
+    if (scheduleId) {
+      studentScopeSql += ' AND ts.ScheduleID = ?';
+      studentScopeParams.push(Number(scheduleId));
+    }
+    if (!scheduleId && gradeLevel) {
+      studentScopeSql += ' AND sec.GradeLevel = ?';
+      studentScopeParams.push(String(gradeLevel));
+    }
+    const [studentScopeRows] = await pool.execute(studentScopeSql, studentScopeParams);
+    const studentIds = studentScopeRows.map(r => r.StudentID);
+
+    const totalStudents = studentIds.length;
+    if (totalStudents === 0) {
+      return res.json({ success: true, data: { totalStudents: 0, averageAttendance: 0, perfectAttendance: 0, chronicAbsent: 0, trend: 0 } });
+    }
+
+    // Attendance stats within window
+    const [attendanceRows] = await pool.execute(
+      `SELECT sa.StudentID, sa.Status
+       FROM subjectattendance sa
+       WHERE sa.StudentID IN (${studentIds.map(() => '?').join(',')})${subjectIdFilter}${dateFilter}`,
+      [...studentIds, ...(subjectIdFilter ? [params[1]] : []), fromDate, toDate]
+    );
+
+    // Compute aggregates
+    const studentToHits = new Map();
+    const studentToPresent = new Map();
+    for (const row of attendanceRows) {
+      const sid = row.StudentID;
+      studentToHits.set(sid, (studentToHits.get(sid) || 0) + 1);
+      if (row.Status === 'Present' || row.Status === 'Late') {
+        studentToPresent.set(sid, (studentToPresent.get(sid) || 0) + 1);
+      }
+    }
+
+    let sumRates = 0;
+    let perfectAttendance = 0;
+    let chronicAbsent = 0;
+    for (const sid of studentIds) {
+      const hits = studentToHits.get(sid) || 0;
+      const prs = studentToPresent.get(sid) || 0;
+      const rate = hits > 0 ? (prs / hits) * 100 : 0;
+      sumRates += rate;
+      if (hits > 0 && prs === hits) perfectAttendance += 1;
+      if (hits > 0 && prs / hits <= 0.7) chronicAbsent += 1; // <=70% present considered chronic
+    }
+
+    const averageAttendance = totalStudents > 0 ? Number((sumRates / totalStudents).toFixed(1)) : 0;
+
+    return res.json({
+      success: true,
+      data: {
+        totalStudents,
+        averageAttendance,
+        perfectAttendance,
+        chronicAbsent,
+        trend: 0
+      }
+    });
+  } catch (error) {
+    console.error('Teacher reports error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Export teacher report as CSV
+router.get('/reports/export', async (req, res) => {
+  try {
+    const teacherUserId = req.user.userId;
+    const { label = 'attendance', period = 'week', scheduleId, gradeLevel } = req.query; // label decides dataset
+
+    const escapeCsv = (value) => {
+      if (value === null || value === undefined) return '';
+      const str = String(value);
+      if (/[",\n]/.test(str)) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+
+    const toCsv = (rows, header) => {
+      let csv = header.join(',') + '\n';
+      for (const row of rows) {
+        csv += header.map((h) => escapeCsv(row[h])).join(',') + '\n';
+      }
+      return csv;
+    };
+
+    // Build scope
+    let subjectId = null;
+    if (scheduleId) {
+      const [schedRows] = await pool.execute(
+        `SELECT SubjectID FROM teacherschedule WHERE ScheduleID = ? AND TeacherID = ? LIMIT 1`,
+        [Number(scheduleId), teacherUserId]
+      );
+      if (!Array.isArray(schedRows) || schedRows.length === 0) {
+        return res.status(403).json({ success: false, message: 'You do not have access to this schedule' });
+      }
+      subjectId = schedRows[0].SubjectID;
+    }
+
+    // Date range
+    const now = new Date();
+    const toDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const from = new Date(now);
+    switch (String(period)) {
+      case 'day':
+      case 'today':
+        break;
+      case 'month': from.setDate(from.getDate() - 30); break;
+      case 'quarter': from.setDate(from.getDate() - 90); break;
+      case 'year': from.setDate(from.getDate() - 365); break;
+      case 'week':
+      default: from.setDate(from.getDate() - 7); break;
+    }
+    const fromDate = `${from.getFullYear()}-${String(from.getMonth()+1).padStart(2,'0')}-${String(from.getDate()).padStart(2,'0')}`;
+
+    // Student scope
+    let studentScopeSql = `
+      SELECT DISTINCT ss.StudentID, sr.FullName AS studentName, sec.SectionName AS sectionName, sec.GradeLevel AS gradeLevel
+      FROM studentschedule ss
+      JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+      JOIN studentrecord sr ON sr.StudentID = ss.StudentID
+      LEFT JOIN section sec ON sec.SectionID = ts.SectionID
+      WHERE ts.TeacherID = ?`;
+    const studentScopeParams = [teacherUserId];
+    if (scheduleId) {
+      studentScopeSql += ' AND ts.ScheduleID = ?';
+      studentScopeParams.push(Number(scheduleId));
+    }
+    if (!scheduleId && gradeLevel) {
+      studentScopeSql += ' AND sec.GradeLevel = ?';
+      studentScopeParams.push(String(gradeLevel));
+    }
+    const [rosterRows] = await pool.execute(studentScopeSql, studentScopeParams);
+    const studentIds = rosterRows.map(r => r.StudentID);
+
+    if (String(label) === 'student-list') {
+      const header = ['studentId','studentName','sectionName','gradeLevel'];
+      const rows = rosterRows.map(r => ({ studentId: r.StudentID, studentName: r.studentName, sectionName: r.sectionName || '', gradeLevel: r.gradeLevel || '' }));
+      const csv = toCsv(rows, header);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="teacher-${label}-${Date.now()}.csv"`);
+      return res.status(200).send(csv);
+    }
+
+    // Attendance dataset
+    if (studentIds.length === 0) {
+      const header = ['studentId','studentName','date','status'];
+      const csv = toCsv([], header);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="teacher-${label}-${Date.now()}.csv"`);
+      return res.status(200).send(csv);
+    }
+
+    const [attRows] = await pool.execute(
+      `SELECT sa.StudentID as studentId, sr.FullName as studentName, sa.Date as date, sa.Status as status
+       FROM subjectattendance sa
+       JOIN studentrecord sr ON sr.StudentID = sa.StudentID
+       WHERE sa.StudentID IN (${studentIds.map(() => '?').join(',')})
+         ${subjectId ? ' AND sa.SubjectID = ?' : ''}
+         AND sa.Date BETWEEN ? AND ?
+       ORDER BY sa.Date DESC, sr.FullName ASC`,
+      [...studentIds, ...(subjectId ? [subjectId] : []), fromDate, toDate]
+    );
+
+    const header = ['studentId','studentName','date','status'];
+    const csv = toCsv(attRows, header);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="teacher-${label}-${Date.now()}.csv"`);
+    return res.status(200).send(csv);
+  } catch (error) {
+    console.error('Teacher export reports error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 export default router;
 
 // Get detailed student info (personal, parent, section) and attendance for this teacher's schedule
@@ -292,6 +527,354 @@ router.get('/student-details', async (req, res) => {
     });
   } catch (error) {
     console.error('Teacher get student details error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// ===== EXCUSE LETTER ROUTES =====
+
+// Get excuse letters for teacher's students
+router.get('/excuse-letters', async (req, res) => {
+  try {
+    const teacherUserId = req.user.userId;
+    const { studentId, status, subjectId, limit = 50 } = req.query;
+
+    let query = `
+      SELECT 
+        el.LetterID as excuseLetterId,
+        el.StudentID as studentId,
+        el.ParentID as parentId,
+        NULL as subjectId,
+        el.DateFiled as dateFrom,
+        el.DateFiled as dateTo,
+        el.Reason as reason,
+        el.AttachmentFile as supportingDocumentPath,
+        LOWER(el.Status) as status,
+        'parent' as submittedBy,
+        el.ParentID as submittedByUserId,
+        el.ReviewedBy as reviewedByUserId,
+        NULL as reviewNotes,
+        el.DateFiled as createdAt,
+        el.DateFiled as updatedAt,
+        el.ReviewedDate as reviewedAt,
+        sr.FullName as studentName,
+        sr.GradeLevel as gradeLevel,
+        sec.SectionName as sectionName,
+        NULL as subjectName,
+        p.FullName as parentName,
+        p.ContactInfo as parentContact,
+        COALESCE(tr.FullName, ua.Username) as reviewedByName
+      FROM excuseletter el
+      JOIN studentrecord sr ON sr.StudentID = el.StudentID
+      LEFT JOIN section sec ON sec.SectionID = sr.SectionID
+      LEFT JOIN parent p ON p.ParentID = el.ParentID
+      LEFT JOIN teacherrecord tr ON tr.UserID = el.ReviewedBy
+      LEFT JOIN useraccount ua ON ua.UserID = el.ReviewedBy
+      WHERE el.StudentID IN (
+        SELECT DISTINCT ss.StudentID 
+        FROM studentschedule ss
+        JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+        WHERE ts.TeacherID = ?
+      )
+    `;
+
+    const params = [teacherUserId];
+
+    if (studentId) {
+      query += ' AND el.StudentID = ?';
+      params.push(studentId);
+    }
+
+    if (status && status !== 'all') {
+      query += ' AND LOWER(el.Status) = ?';
+      params.push(status.toLowerCase());
+    }
+
+    if (subjectId) {
+      query += ' AND el.SubjectID = ?';
+      params.push(subjectId);
+    }
+
+    query += ' ORDER BY el.DateFiled DESC LIMIT ?';
+    params.push(parseInt(limit));
+
+    const [rows] = await pool.execute(query, params);
+
+    const excuseLetters = rows.map(letter => ({
+      excuseLetterId: letter.excuseLetterId,
+      studentId: letter.studentId,
+      studentName: letter.studentName,
+      gradeLevel: letter.gradeLevel,
+      sectionName: letter.sectionName,
+      subjectId: letter.subjectId,
+      subjectName: letter.subjectName,
+      parentName: letter.parentName,
+      parentContact: letter.parentContact,
+      dateFrom: letter.dateFrom,
+      dateTo: letter.dateTo,
+      reason: letter.reason,
+      supportingDocumentPath: letter.supportingDocumentPath,
+      status: letter.status,
+      submittedBy: letter.submittedBy,
+      submittedByUserId: letter.submittedByUserId,
+      reviewedByUserId: letter.reviewedByUserId,
+      reviewedByName: letter.reviewedByName,
+      reviewNotes: letter.reviewNotes,
+      createdAt: letter.createdAt,
+      updatedAt: letter.updatedAt,
+      reviewedAt: letter.reviewedAt
+    }));
+
+    return res.json({ success: true, data: excuseLetters });
+  } catch (error) {
+    console.error('Get excuse letters error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Get excuse letter details
+router.get('/excuse-letters/:excuseLetterId', async (req, res) => {
+  try {
+    const { excuseLetterId } = req.params;
+    const teacherUserId = req.user.userId;
+
+    const [rows] = await pool.execute(
+      `SELECT 
+        el.LetterID as excuseLetterId,
+        el.StudentID as studentId,
+        el.ParentID as parentId,
+        NULL as subjectId,
+        el.DateFiled as dateFrom,
+        el.DateFiled as dateTo,
+        el.Reason as reason,
+        el.AttachmentFile as supportingDocumentPath,
+        LOWER(el.Status) as status,
+        'parent' as submittedBy,
+        el.ParentID as submittedByUserId,
+        el.ReviewedBy as reviewedByUserId,
+        NULL as reviewNotes,
+        el.DateFiled as createdAt,
+        el.DateFiled as updatedAt,
+        el.ReviewedDate as reviewedAt,
+        sr.FullName as studentName,
+        sr.GradeLevel as gradeLevel,
+        sec.SectionName as sectionName,
+        NULL as subjectName,
+        p.FullName as parentName,
+        p.ContactInfo as parentContact,
+        COALESCE(tr.FullName, ua.Username) as reviewedByName
+      FROM excuseletter el
+      JOIN studentrecord sr ON sr.StudentID = el.StudentID
+      LEFT JOIN section sec ON sec.SectionID = sr.SectionID
+      LEFT JOIN parent p ON p.ParentID = el.ParentID
+      LEFT JOIN teacherrecord tr ON tr.UserID = el.ReviewedBy
+      LEFT JOIN useraccount ua ON ua.UserID = el.ReviewedBy
+      WHERE el.LetterID = ? AND el.StudentID IN (
+        SELECT DISTINCT ss.StudentID 
+        FROM studentschedule ss
+        JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+        WHERE ts.TeacherID = ?
+      )`,
+      [excuseLetterId, teacherUserId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Excuse letter not found' });
+    }
+
+    const excuseLetter = rows[0];
+
+    return res.json({ 
+      success: true, 
+      data: {
+        excuseLetterId: excuseLetter.excuseLetterId,
+        studentId: excuseLetter.studentId,
+        studentName: excuseLetter.studentName,
+        gradeLevel: excuseLetter.gradeLevel,
+        sectionName: excuseLetter.sectionName,
+        subjectId: excuseLetter.subjectId,
+        subjectName: excuseLetter.subjectName,
+        parentName: excuseLetter.parentName,
+        parentContact: excuseLetter.parentContact,
+        dateFrom: excuseLetter.dateFrom,
+        dateTo: excuseLetter.dateTo,
+        reason: excuseLetter.reason,
+        supportingDocumentPath: excuseLetter.supportingDocumentPath,
+        status: excuseLetter.status,
+        submittedBy: excuseLetter.submittedBy,
+        submittedByUserId: excuseLetter.submittedByUserId,
+        reviewedByUserId: excuseLetter.reviewedByUserId,
+        reviewedByName: excuseLetter.reviewedByName,
+        reviewNotes: excuseLetter.reviewNotes,
+        createdAt: excuseLetter.createdAt,
+        updatedAt: excuseLetter.updatedAt,
+        reviewedAt: excuseLetter.reviewedAt
+      }
+    });
+  } catch (error) {
+    console.error('Get excuse letter details error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Review excuse letter (approve/decline)
+router.post('/excuse-letters/:excuseLetterId/review', async (req, res) => {
+  try {
+    const { excuseLetterId } = req.params;
+    const teacherUserId = req.user.userId;
+    const { status, reviewNotes } = req.body;
+
+    if (!status || !['approved', 'declined'].includes(status)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Status must be either "approved" or "declined"' 
+      });
+    }
+
+    // Verify the teacher has access to this excuse letter
+    const [verifyRows] = await pool.execute(
+      `SELECT el.LetterID, el.StudentID, el.Status
+       FROM excuseletter el
+       WHERE el.LetterID = ? AND el.StudentID IN (
+         SELECT DISTINCT ss.StudentID 
+         FROM studentschedule ss
+         JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+         WHERE ts.TeacherID = ?
+       )`,
+      [excuseLetterId, teacherUserId]
+    );
+
+    if (verifyRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Excuse letter not found' });
+    }
+
+    if (verifyRows[0].Status.toLowerCase() !== 'pending') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Excuse letter has already been reviewed' 
+      });
+    }
+
+    // Map our status to the existing enum values
+    const dbStatus = status === 'approved' ? 'Approved' : 'Rejected';
+
+    // Update excuse letter using existing table structure
+    await pool.execute(
+      `UPDATE excuseletter 
+       SET Status = ?, ReviewedBy = ?, ReviewedDate = NOW()
+       WHERE LetterID = ?`,
+      [dbStatus, teacherUserId, excuseLetterId]
+    );
+
+    // Create notification for parent using existing notification table
+    await pool.execute(
+      `INSERT INTO notification 
+       (RecipientID, Message, Status) 
+       SELECT p.UserID, ?, 'Unread'
+       FROM excuseletter el
+       JOIN parent p ON p.ParentID = el.ParentID
+       WHERE el.LetterID = ?`,
+      [`Your excuse letter has been ${status}`, excuseLetterId]
+    );
+
+    // If approved, update related attendance records
+    if (status === 'approved') {
+      const studentId = verifyRows[0].StudentID;
+      
+      // Get the excuse letter details
+      const [excuseDetails] = await pool.execute(
+        `SELECT DateFiled FROM excuseletter WHERE LetterID = ?`,
+        [excuseLetterId]
+      );
+
+      if (excuseDetails.length > 0) {
+        const { DateFiled } = excuseDetails[0];
+        
+        // Update all subject attendance records for the date
+        await pool.execute(
+          `UPDATE subjectattendance 
+           SET Status = 'Excused' 
+           WHERE StudentID = ? AND Date = ? AND Status = 'Absent'`,
+          [studentId, DateFiled]
+        );
+      }
+    }
+
+    return res.json({ 
+      success: true, 
+      message: `Excuse letter ${status} successfully` 
+    });
+  } catch (error) {
+    console.error('Review excuse letter error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Submit excuse letter (for teachers)
+router.post('/excuse-letters', async (req, res) => {
+  try {
+    const teacherUserId = req.user.userId;
+    const { studentId, subjectId, dateFrom, dateTo, reason, supportingDocumentPath } = req.body;
+
+    // Validate required fields
+    if (!studentId || !dateFrom || !dateTo || !reason) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Student ID, date from, date to, and reason are required' 
+      });
+    }
+
+    // Verify the teacher has access to this student
+    const [studentCheck] = await pool.execute(
+      `SELECT sr.StudentID, sr.ParentID
+       FROM studentrecord sr
+       JOIN studentschedule ss ON ss.StudentID = sr.StudentID
+       JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+       WHERE sr.StudentID = ? AND ts.TeacherID = ?`,
+      [studentId, teacherUserId]
+    );
+
+    if (studentCheck.length === 0) {
+      return res.status(403).json({ success: false, message: 'Access denied to this student' });
+    }
+
+    const parentId = studentCheck[0].ParentID;
+
+    // Validate date range
+    const fromDate = new Date(dateFrom);
+    const toDate = new Date(dateTo);
+    if (fromDate > toDate) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Date from cannot be after date to' 
+      });
+    }
+
+    // Insert excuse letter using existing table structure
+    const [result] = await pool.execute(
+      `INSERT INTO excuseletter 
+       (StudentID, ParentID, DateFiled, Reason, AttachmentFile, Status) 
+       VALUES (?, ?, ?, ?, ?, 'Pending')`,
+      [studentId, parentId, dateFrom, reason, supportingDocumentPath || null]
+    );
+
+    const excuseLetterId = result.insertId;
+
+    // Create notification for parent using existing notification table
+    await pool.execute(
+      `INSERT INTO notification 
+       (RecipientID, Message, Status) 
+       VALUES (?, ?, 'Unread')`,
+      [parentId, 'A new excuse letter has been submitted for your child']
+    );
+
+    return res.status(201).json({ 
+      success: true, 
+      data: { excuseLetterId },
+      message: 'Excuse letter submitted successfully' 
+    });
+  } catch (error) {
+    console.error('Submit excuse letter error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });

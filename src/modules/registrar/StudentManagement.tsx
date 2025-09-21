@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Edit, Save, X, User, Calendar, Phone, MapPin, GraduationCap, Users } from 'lucide-react';
+import { Search, Filter, Edit, Save, X, User } from 'lucide-react';
 import { RegistrarService } from './api/registrarService';
 
 interface Student {
@@ -28,13 +28,21 @@ interface Section {
 }
 
 export default function StudentManagement() {
+  const formatDateMDY = (value?: string) => {
+    if (!value) return '';
+    const iso = value.toString();
+    const ymd = iso.length >= 10 ? iso.substring(0, 10) : iso;
+    const [y, m, d] = ymd.split('-');
+    if (!y || !m || !d) return value;
+    return `${m.padStart(2, '0')}/${d.padStart(2, '0')}/${y}`;
+  };
   const [students, setStudents] = useState<Student[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [gradeFilter, setGradeFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('approved');
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [editForm, setEditForm] = useState<Partial<Student>>({});
   const [saveLoading, setSaveLoading] = useState(false);
@@ -43,6 +51,14 @@ export default function StudentManagement() {
     loadStudents();
     loadSections();
   }, []);
+
+  // Auto-apply filters with debounce
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      loadStudents();
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [search, gradeFilter, statusFilter]);
 
   const loadStudents = async () => {
     try {
@@ -239,7 +255,7 @@ export default function StudentManagement() {
                           </div>
                           <div className="ml-4">
                             <div className="text-sm font-medium text-gray-900">{student.studentName}</div>
-                            <div className="text-sm text-gray-500">{student.gender} • {student.dateOfBirth}</div>
+                            <div className="text-sm text-gray-500">{student.gender} • {formatDateMDY(student.dateOfBirth)}</div>
                           </div>
                         </div>
                       </td>
@@ -282,7 +298,7 @@ export default function StudentManagement() {
                       </div>
                       <div>
                         <div className="text-sm font-medium text-gray-900">{student.studentName}</div>
-                        <div className="text-sm text-gray-500">{student.gender} • {student.dateOfBirth}</div>
+                        <div className="text-sm text-gray-500">{student.gender} • {formatDateMDY(student.dateOfBirth)}</div>
                         <div className="text-sm text-gray-500">Grade {student.gradeLevel} • {student.section || 'Not assigned'}</div>
                         <div className="text-sm text-gray-500">{student.parentName}</div>
                         <div className="text-sm text-gray-500">{student.parentContact}</div>

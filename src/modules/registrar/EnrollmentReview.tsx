@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+// Dynamically import mammoth when needed to keep bundle lean
+let mammothRef: any = null;
 import { Search, Filter, Eye, CheckCircle, XCircle, Clock, User, FileText, Download } from 'lucide-react';
 import { RegistrarService } from './api/registrarService';
 
@@ -36,7 +38,7 @@ export default function EnrollmentReview() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('pending');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedEnrollment, setSelectedEnrollment] = useState<Enrollment | null>(null);
@@ -52,10 +54,289 @@ export default function EnrollmentReview() {
   const [declineNotes, setDeclineNotes] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Determine if a filename/url is previewable inline in browsers
+  const canPreviewInline = (filename: string) => {
+    const lower = filename.toLowerCase();
+    return (
+      lower.endsWith('.pdf') ||
+      lower.endsWith('.png') ||
+      lower.endsWith('.jpg') ||
+      lower.endsWith('.jpeg') ||
+      lower.endsWith('.gif') ||
+      lower.endsWith('.txt') ||
+      lower.endsWith('.html')
+    );
+  };
+
+  // Function to create a document viewer modal
+  const createDocumentViewer = (url: string, filename: string, inlineOverride?: boolean) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+
+    // Create modal content
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      background: white;
+      border-radius: 8px;
+      width: 90%;
+      height: 90%;
+      max-width: 1200px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    `;
+
+    // Create header
+    const header = document.createElement('div');
+    header.style.cssText = `
+      padding: 16px 20px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    `;
+
+    const title = document.createElement('h3');
+    title.textContent = filename;
+    title.style.cssText = `
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: #111827;
+    `;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '×';
+    closeBtn.style.cssText = `
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #6b7280;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+
+    const downloadBtn = document.createElement('button');
+    downloadBtn.textContent = 'Download';
+    downloadBtn.style.cssText = `
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+      font-size: 14px;
+      margin-left: 12px;
+    `;
+    
+    // Add download functionality (uses Authorization to force attachment response)
+    downloadBtn.onclick = async () => {
+      try {
+        const token = localStorage.getItem('auth_token');
+        const noQueryUrl = url.split('?')[0];
+        const response = await fetch(noQueryUrl, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+        });
+        if (!response.ok) throw new Error('Failed to fetch file for download');
+        const blob = await response.blob();
+        const objectUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+      } catch (_) {
+        // Silently ignore in modal; main flow already handles errors
+      }
+    };
+
+    const buttonContainer = document.createElement('div');
+    buttonContainer.style.cssText = 'display: flex; align-items: center;';
+    buttonContainer.appendChild(downloadBtn);
+    buttonContainer.appendChild(closeBtn);
+
+    header.appendChild(title);
+    header.appendChild(buttonContainer);
+
+    // Create content container
+    const contentContainer = document.createElement('div');
+    contentContainer.style.cssText = `
+      flex: 1;
+      padding: 20px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+
+    if (inlineOverride === true || (inlineOverride !== false && canPreviewInline(filename))) {
+      const iframe = document.createElement('iframe');
+      iframe.src = url;
+      iframe.style.cssText = `
+        width: 100%;
+        height: 100%;
+        border: none;
+        border-radius: 4px;
+      `;
+      contentContainer.appendChild(iframe);
+    } else if (filename.toLowerCase().endsWith('.docx')) {
+      // Render .docx to HTML using mammoth
+      const container = document.createElement('div');
+      container.style.cssText = 'width:100%; height:100%; overflow:auto;';
+      contentContainer.appendChild(container);
+
+      (async () => {
+        try {
+          if (!mammothRef) {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const mod = await import('mammoth');
+            mammothRef = (mod as any).default ? (mod as any).default : mod;
+          }
+          const token = localStorage.getItem('auth_token') || '';
+          const noQueryUrl = url.split('?')[0];
+          const response = await fetch(noQueryUrl, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+          });
+          if (!response.ok) throw new Error('Failed to fetch docx');
+          const arrayBuf = await response.arrayBuffer();
+          const result = await mammothRef.convertToHtml({ arrayBuffer: arrayBuf });
+          container.innerHTML = `<div style="max-width:800px;margin:0 auto;">${result.value}</div>`;
+        } catch (err: any) {
+          container.innerHTML = `<div style="text-align:center;color:#b91c1c;">Unable to render DOCX. Use Download to open it. (${err?.message || 'Unknown error'})</div>`;
+        }
+      })();
+    } else {
+      const message = document.createElement('div');
+      message.style.cssText = `
+        text-align: center;
+        color: #374151;
+      `;
+      message.innerHTML = `
+        <div style="font-size:16px; font-weight:600; margin-bottom:8px;">Preview not available</div>
+        <div style="font-size:14px; color:#6b7280;">This file type cannot be viewed in the browser. Use Download to open it.</div>
+      `;
+      contentContainer.appendChild(message);
+    }
+
+    // Assemble modal
+    modal.appendChild(header);
+    modal.appendChild(contentContainer);
+    overlay.appendChild(modal);
+
+    // Add to document
+    document.body.appendChild(overlay);
+
+    // Close handlers
+    const closeModal = () => {
+      document.body.removeChild(overlay);
+    };
+
+    closeBtn.onclick = closeModal;
+    overlay.onclick = (e) => {
+      if (e.target === overlay) closeModal();
+    };
+
+    // Escape key handler
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+  };
+
+  // Function to handle authenticated document access
+  const handleDocumentAccess = async (url: string, filename: string, isDownload = false) => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        alert('Please log in to access documents');
+        return;
+      }
+
+      if (isDownload) {
+        // For download, fetch the file and create a blob URL
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Failed to fetch document');
+          } else {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+        }
+
+        const blob = await response.blob();
+        const objectUrl = window.URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        // Clean up the object URL after a delay
+        setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+      } else {
+        // For viewing: only attempt inline preview for the exact file if supported
+        const baseUrlNoQuery = url.split('?')[0];
+        const urlWithToken = `${baseUrlNoQuery}?token=${encodeURIComponent(token)}`;
+        if (canPreviewInline(filename)) {
+          createDocumentViewer(urlWithToken, filename, true);
+        } else {
+          // Not previewable – show message to avoid showing a different file
+          createDocumentViewer(urlWithToken, filename, false);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error accessing document:', error);
+      alert(`Failed to access document: ${error?.message || 'Unknown error'}`);
+    }
+  };
+
   useEffect(() => {
     loadEnrollments();
     loadStats();
   }, [currentPage, statusFilter]);
+
+  // Auto-apply filters with debounce (search + status)
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      // Reset to first page when filters change
+      setCurrentPage(1);
+      loadEnrollments();
+      loadStats();
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [search, statusFilter]);
 
   const loadEnrollments = async () => {
     try {
@@ -497,7 +778,7 @@ export default function EnrollmentReview() {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700">Date of Birth</label>
-                    <p className="text-sm text-gray-900">{selectedEnrollment.dateOfBirth}</p>
+                    <p className="text-sm text-gray-900">{new Date(selectedEnrollment.dateOfBirth).toLocaleDateString()}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700">Gender</label>
@@ -533,8 +814,8 @@ export default function EnrollmentReview() {
                           } else if (raw.startsWith('/')) {
                             url = `${API_BASE_URL}${raw}`;
                           } else {
-                            // Assume filename stored and asset is placed under Vite public/ -> served at root
-                            url = `${window.location.origin}/${raw}`;
+                            // Serve files through backend API
+                            url = `${API_BASE_URL}/registrar/documents/${encodeURIComponent(raw)}`;
                           }
                         }
                         if (!url && isObject && name) {
@@ -544,36 +825,37 @@ export default function EnrollmentReview() {
                           } else if (raw.startsWith('/')) {
                             url = `${API_BASE_URL}${raw}`;
                           } else {
-                            url = `${window.location.origin}/${raw}`;
+                            url = `${API_BASE_URL}/registrar/documents/${encodeURIComponent(raw)}`;
                           }
                         }
                         return (
-                          <div key={index} className="flex items-center text-sm text-gray-600">
-                            <FileText className="w-4 h-4 mr-2" />
-                            {url ? (
-                              <a
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-600 hover:underline"
-                              >
-                                {name}
-                              </a>
-                            ) : (
-                              <span>{name}</span>
-                            )}
-                            {typeof size === 'number' && (
-                              <span className="ml-2 text-xs text-gray-400">({Math.round(size / 1024)} KB)</span>
-                            )}
+                          <div key={index} className="flex items-center justify-between text-sm text-gray-600 py-2 border-b border-gray-100 last:border-b-0">
+                            <div className="flex items-center flex-1">
+                              <FileText className="w-4 h-4 mr-2 text-gray-400" />
+                              <span className="text-gray-900 font-medium">{name}</span>
+                              {typeof size === 'number' && (
+                                <span className="ml-2 text-xs text-gray-400">({Math.round(size / 1024)} KB)</span>
+                              )}
+                            </div>
                             {url && (
-                              <a
-                                href={url}
-                                download
-                                className="ml-3 inline-flex items-center text-xs text-gray-500 hover:text-gray-700"
-                                title="Download"
-                              >
-                                <Download className="w-4 h-4" />
-                              </a>
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => handleDocumentAccess(url, name, false)}
+                                  className="inline-flex items-center px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
+                                  title="View Document"
+                                >
+                                  <Eye className="w-3 h-3 mr-1" />
+                                  View
+                                </button>
+                                <button
+                                  onClick={() => handleDocumentAccess(url, name, true)}
+                                  className="inline-flex items-center px-3 py-1 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors"
+                                  title="Download Document"
+                                >
+                                  <Download className="w-3 h-3 mr-1" />
+                                  Download
+                                </button>
+                              </div>
                             )}
                           </div>
                         );

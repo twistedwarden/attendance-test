@@ -127,11 +127,42 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
     setIsLoading(true);
 
     try {
+      // 1) If there are files selected, upload them first to get server-side filenames
+      const token = localStorage.getItem('auth_token');
+      let uploadedFilenames: string[] = [];
+
+      if (enrollmentData.documents.length > 0) {
+        const formData = new FormData();
+        enrollmentData.documents.forEach((file) => {
+          formData.append('documents', file, file.name);
+        });
+
+        const uploadRes = await fetch('/api/registrar/upload-documents', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData
+        });
+
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok || !uploadData?.success) {
+          setError(uploadData?.message || 'Failed to upload documents');
+          setIsLoading(false);
+          return;
+        }
+
+        uploadedFilenames = Array.isArray(uploadData.files)
+          ? uploadData.files.map((f: any) => f.filename).filter(Boolean)
+          : [];
+      }
+
+      // 2) Submit enrollment with the saved filenames so registrar can serve them later
       const response = await fetch('/api/auth/enroll-student', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           studentName: `${enrollmentData.firstName} ${enrollmentData.middleName} ${enrollmentData.lastName}`.trim(),
@@ -141,11 +172,9 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
           nationality: enrollmentData.nationality,
           address: enrollmentData.address,
           gradeLevel: enrollmentData.gradeLevel,
-          documents: enrollmentData.documents.map(file => ({
-            name: file.name,
-            type: file.type,
-            size: file.size
-          })),
+          // Store just the filenames saved on the server; the registrar viewer
+          // uses these to construct /api/registrar/documents/:filename URLs.
+          documents: uploadedFilenames,
           additionalInfo: enrollmentData.additionalInfo
         })
       });
@@ -363,23 +392,13 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
                   required
                 >
                   <option value="">Select Grade Level</option>
-                  <optgroup label="Elementary">
-                    <option value="K">Kindergarten</option>
-                    <option value="1">Grade 1</option>
-                    <option value="2">Grade 2</option>
-                    <option value="3">Grade 3</option>
-                    <option value="4">Grade 4</option>
-                    <option value="5">Grade 5</option>
-                    <option value="6">Grade 6</option>
-                  </optgroup>
-                  <optgroup label="High School">
-                    <option value="7">Grade 7</option>
-                    <option value="8">Grade 8</option>
-                    <option value="9">Grade 9</option>
-                    <option value="10">Grade 10</option>
-                    <option value="11">Grade 11</option>
-                    <option value="12">Grade 12</option>
-                  </optgroup>
+                  <option value="1">Grade 1</option>
+                  <option value="2">Grade 2</option>
+                  <option value="3">Grade 3</option>
+                  <option value="4">Grade 4</option>
+                  <option value="5">Grade 5</option>
+                  <option value="6">Grade 6</option>
+                  <option value="7">Grade 7</option>
                 </select>
               </div>
             </div>

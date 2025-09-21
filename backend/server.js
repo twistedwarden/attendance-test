@@ -23,8 +23,18 @@ const PORT = process.env.PORT || 5000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Security middleware
-app.use(helmet());
+// Security middleware (allow embedding by frontend for document preview)
+const allowedFrameAncestor = process.env.CORS_ORIGIN || 'http://localhost:5173';
+const defaultDirectives = helmet.contentSecurityPolicy?.getDefaultDirectives
+  ? helmet.contentSecurityPolicy.getDefaultDirectives()
+  : { "default-src": ["'self'"] };
+defaultDirectives["frame-ancestors"] = ["'self'", allowedFrameAncestor];
+
+app.use(helmet({
+  contentSecurityPolicy: { directives: defaultDirectives },
+  frameguard: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 
 // CORS configuration
 app.use(cors({

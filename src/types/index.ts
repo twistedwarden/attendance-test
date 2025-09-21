@@ -101,3 +101,43 @@ export interface TeacherSchedule {
   gracePeriod: number;
   isActive: boolean;
 }
+
+// Excuse Letter interfaces
+export interface ExcuseLetter {
+  excuseLetterId: number;
+  studentId: number;
+  studentName: string;
+  gradeLevel: string;
+  sectionName: string;
+  subjectId?: number;
+  subjectName?: string;
+  parentName?: string;
+  parentContact?: string;
+  dateFrom: string;
+  dateTo: string;
+  reason: string;
+  supportingDocumentPath?: string;
+  status: 'pending' | 'approved' | 'declined';
+  submittedBy: 'parent' | 'teacher';
+  submittedByUserId: number;
+  reviewedByUserId?: number;
+  reviewedByName?: string;
+  reviewNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+  reviewedAt?: string;
+}
+
+export interface ExcuseLetterFormData {
+  studentId: number;
+  subjectId?: number;
+  dateFrom: string;
+  dateTo: string;
+  reason: string;
+  supportingDocumentPath?: string;
+}
+
+export interface ExcuseLetterReviewData {
+  status: 'approved' | 'declined';
+  reviewNotes?: string;
+}

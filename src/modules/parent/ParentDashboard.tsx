@@ -7,6 +7,8 @@ import CompactProfile from './pages/CompactProfile';
 import CompactAttendance from './pages/CompactAttendance';
 import NoStudentsMessage from './components/NoStudentsMessage';
 import StudentEnrollmentForm from './components/StudentEnrollmentForm';
+import { ExcuseLetterSection } from './components/ExcuseLetterSection';
+import { FollowUpDocumentsSection } from './components/FollowUpDocumentsSection';
 import { ParentService, Parent, Student } from './api/parentService';
 import './parent.css';
 
@@ -142,6 +144,22 @@ const ParentDashboard = () => {
             element={
               <div className="flex-1 w-full h-full overflow-auto">
                 {selectedStudent && <CompactAttendance selectedDaughter={selectedStudent} />}
+              </div>
+            } 
+          />
+          <Route 
+            path="excuse-letters" 
+            element={
+              <div className="flex-1 w-full h-full overflow-auto p-6">
+                <ExcuseLetterSection students={students} />
+              </div>
+            } 
+          />
+          <Route 
+            path="follow-up-documents" 
+            element={
+              <div className="flex-1 w-full h-full overflow-auto p-6">
+                <FollowUpDocumentsSection students={students} />
               </div>
             } 
           />

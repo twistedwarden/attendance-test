@@ -1,5 +1,7 @@
 // Parent service for fetching real data from the database
 
+import { ExcuseLetter, ExcuseLetterFormData } from '../../../types';
+
 const API_BASE_URL = 'http://localhost:5000/api';
 
 const getToken = (): string | null => {
@@ -107,6 +109,40 @@ export const ParentService = {
       contactInfo: parentData.data?.ContactInfo || '',
       relationship: 'Parent'
     };
+  },
+
+  // ===== ENROLLMENT FOLLOW-UP DOCUMENTS =====
+
+  async getEnrollmentDocuments(studentId?: number): Promise<Array<{ documentId: number; studentId: number; studentName: string; documents: string[]; additionalInfo?: string; createdAt: string }>> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const params = new URLSearchParams();
+    if (studentId) params.set('studentId', String(studentId));
+
+    const res = await fetch(`${API_BASE_URL}/parent/enrollment-documents?${params.toString()}`.replace(/\?$/, params.toString() ? `?${params.toString()}` : ''), {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch enrollment documents');
+    return data.data || [];
+  },
+
+  async submitEnrollmentDocuments(payload: { studentId: number; documents: string[]; additionalInfo?: string }): Promise<{ documentId: number }>{
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const res = await fetch(`${API_BASE_URL}/parent/enrollment-documents`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to submit enrollment documents');
+    return data.data;
   },
 
   // Get students linked to parent
@@ -239,6 +275,60 @@ export const ParentService = {
       todayStatus: todayRecord ? todayRecord.status : 'No Record',
       weeklyPercentage
     };
+  },
+
+  // ===== EXCUSE LETTER METHODS =====
+
+  // Get excuse letters for parent's students
+  async getExcuseLetters(studentId?: number, status?: string, limit: number = 50): Promise<ExcuseLetter[]> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    const params = new URLSearchParams();
+    if (studentId) params.set('studentId', studentId.toString());
+    if (status) params.set('status', status);
+    params.set('limit', limit.toString());
+    
+    const res = await fetch(`${API_BASE_URL}/parent/excuse-letters?${params.toString()}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch excuse letters');
+    
+    return data.data || [];
+  },
+
+  // Get excuse letter details
+  async getExcuseLetterDetails(excuseLetterId: number): Promise<ExcuseLetter> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    const res = await fetch(`${API_BASE_URL}/parent/excuse-letters/${excuseLetterId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch excuse letter details');
+    
+    return data.data;
+  },
+
+  // Submit excuse letter
+  async submitExcuseLetter(formData: ExcuseLetterFormData): Promise<{ excuseLetterId: number }> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    const res = await fetch(`${API_BASE_URL}/parent/excuse-letters`, {
+      method: 'POST',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(formData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to submit excuse letter');
+    
+    return data.data;
   }
 };
 
