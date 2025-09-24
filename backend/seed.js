@@ -525,23 +525,44 @@ const insertNotifications = async (pool, userIds) => {
 
 
 const insertReports = async (pool, generatorUserId, studentIds) => {
-	const now = new Date();
-	const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-	const today = now.toISOString().slice(0, 10);
-	const payload = JSON.stringify({ summary: 'Seeded report', generatedAt: now.toISOString() });
-	const entries = [
-		{ Student: 'Test Student', type: 'Monthly', start: thisMonthStart, end: today },
-	];
-	for (const e of entries) {
-		const sId = studentIds[e.Student];
-		const [exists] = await pool.query('SELECT 1 FROM attendancereport WHERE StudentID = ? AND DateRangeStart = ? AND DateRangeEnd = ? LIMIT 1', [sId, e.start, e.end]);
-		if (exists.length === 0) {
-			await pool.query(
-				'INSERT INTO attendancereport (GeneratedBy, StudentID, ScheduleID, DateRangeStart, DateRangeEnd, ReportType, ReportFile) VALUES (?, ?, ?, ?, ?, ?, ?)',
-				[generatorUserId, sId, null, e.start, e.end, e.type, payload]
-			);
-		}
-	}
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const today = now.toISOString().slice(0, 10);
+    const payload = JSON.stringify({ summary: 'Seeded report', generatedAt: now.toISOString() });
+
+    const hasStudentCol = await hasColumn(pool, 'attendancereport', 'StudentID');
+    const hasScheduleCol = await hasColumn(pool, 'attendancereport', 'ScheduleID');
+
+    const entries = [
+        { Student: 'Test Student', type: 'Monthly', start: thisMonthStart, end: today },
+    ];
+
+    for (const e of entries) {
+        const sId = studentIds[e.Student] || null;
+
+        // Build existence check based on available columns
+        let existsQuery;
+        let existsParams;
+        if (hasStudentCol) {
+            existsQuery = 'SELECT 1 FROM attendancereport WHERE StudentID = ? AND DateRangeStart = ? AND DateRangeEnd = ? LIMIT 1';
+            existsParams = [sId, e.start, e.end];
+        } else {
+            existsQuery = 'SELECT 1 FROM attendancereport WHERE GeneratedBy = ? AND DateRangeStart = ? AND DateRangeEnd = ? AND ReportType = ? LIMIT 1';
+            existsParams = [generatorUserId, e.start, e.end, e.type];
+        }
+
+        const [exists] = await pool.query(existsQuery, existsParams);
+        if (exists.length > 0) continue;
+
+        // Build insert dynamically
+        const cols = ['GeneratedBy', 'DateRangeStart', 'DateRangeEnd', 'ReportType', 'ReportFile'];
+        const vals = [generatorUserId, e.start, e.end, e.type, payload];
+        if (hasStudentCol) { cols.splice(1, 0, 'StudentID'); vals.splice(1, 0, sId); }
+        if (hasScheduleCol) { cols.splice(hasStudentCol ? 2 : 1, 0, 'ScheduleID'); vals.splice(hasStudentCol ? 2 : 1, 0, null); }
+
+        const placeholders = cols.map(() => '?').join(', ');
+        await pool.query(`INSERT INTO attendancereport (${cols.join(', ')}) VALUES (${placeholders})`, vals);
+    }
 };
 
 const insertAuditTrail = async (pool, userIds) => {
@@ -601,8 +622,9 @@ const seed = async () => {
 		await insertAdminRecords(pool, userIds);
 		await insertRegistrarRecords(pool, userIds);
 		await insertStudentSchedules(pool, studentIds, userIds, subjectIds, sectionIds);
-	await insertAttendanceLogs(pool, studentIds, adminId);
-	await insertSubjectAttendance(pool, studentIds, subjectIds, adminId);
+		// Attendance seeding disabled per request:
+		// await insertAttendanceLogs(pool, studentIds, adminId);
+		// await insertSubjectAttendance(pool, studentIds, subjectIds, adminId);
 	await insertExcuseLetters(pool, studentIds, adminId, parentIds);
 	await insertNotifications(pool, userIds);
 	await insertReports(pool, adminId, studentIds);

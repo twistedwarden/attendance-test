@@ -151,6 +151,7 @@ router.get('/enrollments', authenticateToken, requireRole(['registrar', 'admin']
         sr.CreatedBy as createdBy,
         p.FullName as parentName,
         p.ContactInfo as parentContact,
+        up.Username as parentEmail,
         er.ReviewID as reviewId,
         er.Status as reviewStatus,
         er.ReviewDate as reviewDate,
@@ -163,6 +164,7 @@ router.get('/enrollments', authenticateToken, requireRole(['registrar', 'admin']
         ed.SubmittedByUserID as submittedBy
       FROM studentrecord sr
       LEFT JOIN parent p ON sr.ParentID = p.ParentID
+      LEFT JOIN useraccount up ON p.UserID = up.UserID
       LEFT JOIN enrollment_review er ON sr.StudentID = er.StudentID
       LEFT JOIN useraccount ua ON er.ReviewedByUserID = ua.UserID
       LEFT JOIN enrollment_documents ed ON sr.StudentID = ed.StudentID
@@ -453,9 +455,11 @@ router.get('/students', authenticateToken, requireRole(['registrar', 'admin']), 
         sr.EnrollmentDate as enrollmentDate,
         NOW() as lastModified,
         p.FullName as parentName,
-        p.ContactInfo as parentContact
+        p.ContactInfo as parentContact,
+        up.Username as parentEmail
       FROM studentrecord sr
       LEFT JOIN parent p ON sr.ParentID = p.ParentID
+      LEFT JOIN useraccount up ON p.UserID = up.UserID
       LEFT JOIN section sec ON sr.SectionID = sec.SectionID
       ${whereClause}
       ORDER BY sr.StudentID DESC

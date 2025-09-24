@@ -1,8 +1,19 @@
 import express from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
-import { pool, storeEnrollmentDocuments } from '../config/database.js';
+import { pool, storeEnrollmentDocuments, getSystemSetting } from '../config/database.js';
 
 const router = express.Router();
+// ===== System Settings (read-only for parents) =====
+// Get enrollment enabled flag
+router.get('/settings/enrollment', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const val = await getSystemSetting('enrollment_enabled', 'true');
+    return res.json({ success: true, data: { enabled: String(val).toLowerCase() === 'true' } });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch enrollment setting' });
+  }
+});
+
 
 // Get parent profile
 router.get('/profile', authenticateToken, requireRole(['parent']), async (req, res) => {

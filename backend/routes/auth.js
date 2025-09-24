@@ -788,9 +788,27 @@ router.post('/register-parent-verify', async (req, res) => {
 
     await clearOtp(email, 'parent_register');
 
+    // Issue JWT to auto-login
+    const [userRows] = await pool.execute('SELECT * FROM useraccount WHERE UserID = ? LIMIT 1', [userId]);
+    const user = userRows[0];
+    const token = jwt.sign(
+      { userId: user.UserID, email: user.Username, role: user.Role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+
+    const displayName = (await getDisplayName(user.UserID, user.Role)) || user.Username.split('@')[0];
+    const userResponse = {
+      id: user.UserID,
+      name: displayName,
+      role: user.Role.toLowerCase(),
+      email: user.Username,
+    };
+
     return res.status(201).json({
       success: true,
-      message: 'Registration complete. No student linked yet; please enroll a student.',
+      message: 'Registration complete',
+      data: { user: userResponse, token }
     });
   } catch (error) {
     console.error('Register parent verify error:', error);

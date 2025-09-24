@@ -34,6 +34,8 @@ import {
 	updateSection,
 	deleteSection,
 	getSectionById,
+	getSystemSetting,
+	setSystemSetting,
 } from '../config/database.js';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
 import { validateUserCreation } from '../middleware/validation.js';
@@ -52,6 +54,30 @@ const schedulesStore = [
     { id: 2, subject: 'Science', teacher: 'Ms. Cruz', section: '7-A', days: ['Tue','Thu'], startTime: '09:15', endTime: '10:15', room: 'Room 102' },
 ];
 let nextScheduleId = 3;
+
+// ===== System Settings Routes =====
+// Get enrollment enabled flag
+router.get('/settings/enrollment', async (req, res) => {
+    try {
+        const val = await getSystemSetting('enrollment_enabled', 'true');
+        return res.json({ success: true, data: { enabled: String(val).toLowerCase() === 'true' } });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: 'Failed to fetch enrollment setting' });
+    }
+});
+
+// Update enrollment enabled flag
+router.put('/settings/enrollment', async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        const value = enabled ? 'true' : 'false';
+        await setSystemSetting('enrollment_enabled', value, req.user.userId);
+        await createAuditTrail({ userId: req.user.userId, action: `Set enrollment_enabled=${value}`, tableAffected: 'system_settings', recordId: null }).catch(() => {});
+        return res.json({ success: true, data: { enabled: enabled ? true : false } });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: 'Failed to update enrollment setting' });
+    }
+});
 
 // Users - list with status and name (parent/admin/registrar/teacher display names)
 router.get('/users', async (req, res) => {
@@ -468,6 +494,42 @@ router.get('/audittrail', async (req, res) => {
 	}
 });
 
+// Audit trail - purge old
+router.post('/audittrail/purge', async (req, res) => {
+    try {
+        const { beforeDays = 90 } = req.body || {};
+        const { purgeOldAuditTrail, createAuditTrail } = req.app.get('dbFns') || {};
+        // Fallback import if not attached on app
+        let execPurge = purgeOldAuditTrail;
+        if (!execPurge) {
+            try {
+                const mod = await import('../config/database.js');
+                execPurge = mod.purgeOldAuditTrail;
+            } catch (e) {}
+        }
+        if (!execPurge) return res.status(500).json({ success: false, message: 'Purge function not available' });
+
+        const result = await execPurge({ beforeDays });
+
+        // Try to log the purge in audit trail but don't fail the request if it errors
+        try {
+            const userId = req.user?.userId ?? null;
+            const action = `Purge audit logs older than ${Number(beforeDays)} days`;
+            if (createAuditTrail) {
+                await createAuditTrail({ userId, action, tableAffected: 'audittrail', recordId: null });
+            } else {
+                const mod = await import('../config/database.js');
+                if (mod.createAuditTrail) await mod.createAuditTrail({ userId, action, tableAffected: 'audittrail', recordId: null });
+            }
+        } catch (e) {}
+
+        return res.json({ success: true, data: { affected: result.affectedRows } });
+    } catch (error) {
+        console.error('Purge audit trail error:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
 
 // Attendance reports - list
 router.get('/reports', async (req, res) => {
@@ -500,6 +562,166 @@ router.post('/reports', async (req, res) => {
 		console.error('Create report error:', error);
 		return res.status(500).json({ success: false, message: 'Internal server error' });
 	}
+});
+
+// Attendance reports - export CSV (admin scope)
+router.get('/reports/export', async (req, res) => {
+    try {
+        const { type = 'attendance', dateFrom, dateTo, studentId, scheduleId } = req.query;
+
+        const escapeCsv = (value) => {
+            if (value === null || value === undefined) return '';
+            const str = String(value);
+            if (/[",\n]/.test(str)) {
+                return '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
+        };
+
+        const toCsv = (rows, header) => {
+            let csv = header.join(',') + '\n';
+            for (const row of rows) {
+                csv += header.map((h) => escapeCsv(row[h])).join(',') + '\n';
+            }
+            return csv;
+        };
+
+        // Build date window
+        const now = new Date();
+        const to = dateTo ? String(dateTo) : `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+        const fromDate = dateFrom ? new Date(String(dateFrom)) : new Date(now.getTime() - 7*24*60*60*1000);
+        const from = `${fromDate.getFullYear()}-${String(fromDate.getMonth()+1).padStart(2,'0')}-${String(fromDate.getDate()).padStart(2,'0')}`;
+        // Inclusive end-date handling: treat end as < next day to avoid TZ off-by-one
+        const toDateObj = new Date(to + 'T00:00:00');
+        const toPlus1 = new Date(toDateObj.getTime() + 24*60*60*1000);
+        const toExclusive = `${toPlus1.getFullYear()}-${String(toPlus1.getMonth()+1).padStart(2,'0')}-${String(toPlus1.getDate()).padStart(2,'0')}`;
+
+        // Helper to optionally scope by schedule -> subjectId
+        let subjectId = null;
+        if (scheduleId) {
+            const [schedRows] = await pool.execute(
+                `SELECT SubjectID FROM teacherschedule WHERE ScheduleID = ? LIMIT 1`,
+                [Number(scheduleId)]
+            );
+            if (Array.isArray(schedRows) && schedRows.length > 0) subjectId = schedRows[0].SubjectID;
+        }
+
+        if (String(type) === 'students') {
+            const params = [];
+            let where = '1=1';
+            if (studentId) {
+                where += ' AND sr.StudentID = ?';
+                params.push(Number(studentId));
+            }
+            const [rows] = await pool.execute(
+                `SELECT 
+                    sr.StudentID as studentId,
+                    sr.FullName as studentName,
+                    sec.SectionName as sectionName,
+                    sr.GradeLevel as gradeLevel,
+                    p.FullName as parentName,
+                    p.ContactInfo as parentContact
+                 FROM studentrecord sr
+                 LEFT JOIN section sec ON sec.SectionID = sr.SectionID
+                 LEFT JOIN parent p ON p.ParentID = sr.ParentID
+                 WHERE ${where}
+                 ORDER BY sr.FullName
+                 LIMIT 5000`,
+                params
+            );
+            const header = ['studentId','studentName','sectionName','gradeLevel','parentName','parentContact'];
+            const csv = toCsv(rows, header);
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="admin-students-${Date.now()}.csv"`);
+            return res.status(200).send(csv);
+        }
+
+        if (String(type) === 'subject-attendance' || String(type) === 'tardiness' || String(type) === 'absences' || String(type) === 'attendance') {
+            // subjectattendance preferred for tardiness/absences; attendancelog for raw attendance
+            if (String(type) === 'attendance') {
+                const params = [from, toExclusive];
+                let where = 'al.Date >= ? AND al.Date < ?';
+                if (studentId) { where += ' AND al.StudentID = ?'; params.push(Number(studentId)); }
+                const [rows] = await pool.execute(
+                    `SELECT 
+                        sr.FullName as studentName,
+                        sr.StudentID as studentId,
+                        sec.SectionName as sectionName,
+                        sr.GradeLevel as gradeLevel,
+                        al.Date as date,
+                        al.TimeIn as timeIn,
+                        al.TimeOut as timeOut
+                     FROM attendancelog al
+                     JOIN studentrecord sr ON sr.StudentID = al.StudentID
+                     LEFT JOIN section sec ON sec.SectionID = sr.SectionID
+                     WHERE ${where}
+                     ORDER BY al.Date DESC, sr.FullName ASC
+                     LIMIT 10000`,
+                    params
+                );
+                const header = ['studentId','studentName','sectionName','gradeLevel','date','timeIn','timeOut'];
+                const mapped = rows.map(r => ({
+                    studentId: r.studentId,
+                    studentName: r.studentName,
+                    sectionName: r.sectionName || '',
+                    gradeLevel: r.gradeLevel || '',
+                    date: r.date,
+                    timeIn: r.timeIn,
+                    timeOut: r.timeOut
+                }));
+                const csv = toCsv(mapped, header);
+                res.setHeader('Content-Type', 'text/csv');
+                res.setHeader('Content-Disposition', `attachment; filename="admin-attendance-${Date.now()}.csv"`);
+                return res.status(200).send(csv);
+            }
+
+            // subjectattendance-based export
+            const params = [from, toExclusive];
+            let where = 'sa.Date >= ? AND sa.Date < ?';
+            if (studentId) { where += ' AND sa.StudentID = ?'; params.push(Number(studentId)); }
+            if (subjectId) { where += ' AND sa.SubjectID = ?'; params.push(Number(subjectId)); }
+            if (String(type) === 'tardiness') { where += " AND sa.Status = 'Late'"; }
+            if (String(type) === 'absences') { where += " AND sa.Status = 'Absent'"; }
+
+            const [rows] = await pool.execute(
+                `SELECT 
+                    sr.FullName as studentName,
+                    sr.StudentID as studentId,
+                    sec.SectionName as sectionName,
+                    sr.GradeLevel as gradeLevel,
+                    sa.Date as date,
+                    sa.Status as status,
+                    s.SubjectName as subjectName
+                 FROM subjectattendance sa
+                 JOIN studentrecord sr ON sr.StudentID = sa.StudentID
+                 LEFT JOIN section sec ON sec.SectionID = sr.SectionID
+                 LEFT JOIN subject s ON s.SubjectID = sa.SubjectID
+                 WHERE ${where}
+                 ORDER BY sa.Date DESC, sr.FullName ASC
+                 LIMIT 10000`,
+                params
+            );
+            const header = ['studentId','studentName','sectionName','gradeLevel','subjectName','date','status'];
+            const mapped = rows.map(r => ({
+                studentId: r.studentId,
+                studentName: r.studentName,
+                sectionName: r.sectionName || '',
+                gradeLevel: r.gradeLevel || '',
+                subjectName: r.subjectName || '',
+                date: r.date,
+                status: r.status
+            }));
+            const csv = toCsv(mapped, header);
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="admin-${type}-${Date.now()}.csv"`);
+            return res.status(200).send(csv);
+        }
+
+        return res.status(400).json({ success: false, message: 'Unsupported report type' });
+    } catch (error) {
+        console.error('Admin export reports error:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
 });
 
 // Attendance log - list
@@ -1276,9 +1498,32 @@ router.get('/students', async (req, res) => {
 // Students - create
 router.post('/students', async (req, res) => {
 	try {
-		const { name, gradeLevel = null, sectionId = null, parentId = null, parentContact = null } = req.body;
+		const { 
+			name, 
+			gradeLevel = null, 
+			sectionId = null, 
+			parentId = null, 
+			parentContact = null,
+			dateOfBirth = null,
+			gender = null,
+			placeOfBirth = null,
+			nationality = null,
+			address = null,
+			additionalInfo = null
+		} = req.body;
 		if (!name) return res.status(400).json({ success: false, message: 'Name is required' });
-		const created = await createStudent({ fullName: name, gradeLevel, sectionId, parentId, createdBy: req.user.userId });
+		const created = await createStudent({ 
+			fullName: name, 
+			gradeLevel, 
+			sectionId, 
+			parentId, 
+			createdBy: req.user.userId,
+			dateOfBirth,
+			gender,
+			placeOfBirth,
+			nationality,
+			address
+		});
 		if (parentContact && created?.StudentID) {
 			await updateParentContactByStudentId(created.StudentID, parentContact).catch(() => {});
 		}
@@ -1294,8 +1539,8 @@ router.post('/students', async (req, res) => {
 router.put('/students/:id', async (req, res) => {
 	try {
 		const { id } = req.params;
-		const { name, gradeLevel, sectionId, parentId, parentContact } = req.body;
-		const updated = await updateStudent(Number(id), { fullName: name, gradeLevel, sectionId, parentId });
+		const { name, gradeLevel, sectionId, parentId, parentContact, dateOfBirth, gender, placeOfBirth, nationality, address, additionalInfo } = req.body;
+		const updated = await updateStudent(Number(id), { fullName: name, gradeLevel, sectionId, parentId, dateOfBirth, gender, placeOfBirth, nationality, address, additionalInfo });
 		if (!updated) return res.status(404).json({ success: false, message: 'Student not found' });
 		if (parentContact) {
 			await updateParentContactByStudentId(Number(id), parentContact).catch(() => {});
@@ -1691,6 +1936,7 @@ router.get('/enrollments', async (req, res) => {
                 sr.CreatedBy as createdBy,
                 p.FullName as parentName,
                 p.ContactInfo as parentContact,
+                up.Username as parentEmail,
                 er.ReviewID as reviewId,
                 er.Status as reviewStatus,
                 er.ReviewDate as reviewDate,
@@ -1703,6 +1949,7 @@ router.get('/enrollments', async (req, res) => {
                 ed.SubmittedByUserID as submittedBy
             FROM studentrecord sr
             LEFT JOIN parent p ON sr.ParentID = p.ParentID
+            LEFT JOIN useraccount up ON p.UserID = up.UserID
             LEFT JOIN enrollment_review er ON sr.StudentID = er.StudentID
             LEFT JOIN useraccount ua ON er.ReviewedByUserID = ua.UserID
             LEFT JOIN enrollment_documents ed ON sr.StudentID = ed.StudentID
@@ -1784,6 +2031,7 @@ router.get('/enrollments/:id', async (req, res) => {
                 sr.CreatedBy as createdBy,
                 p.FullName as parentName,
                 p.ContactInfo as parentContact,
+                up.Username as parentEmail,
                 p.ParentID as parentId,
                 er.ReviewID as reviewId,
                 er.Status as reviewStatus,
@@ -1801,6 +2049,7 @@ router.get('/enrollments/:id', async (req, res) => {
                 ed.MimeType as mimeType
             FROM studentrecord sr
             LEFT JOIN parent p ON sr.ParentID = p.ParentID
+            LEFT JOIN useraccount up ON p.UserID = up.UserID
             LEFT JOIN enrollment_review er ON sr.StudentID = er.StudentID
             LEFT JOIN useraccount ua ON er.ReviewedByUserID = ua.UserID
             LEFT JOIN enrollment_documents ed ON sr.StudentID = ed.StudentID
@@ -1828,13 +2077,23 @@ router.get('/enrollments/:id', async (req, res) => {
 router.post('/enrollments/:id/approve', async (req, res) => {
     try {
         const { id } = req.params;
-        const { notes = null, scheduleAssignments = [] } = req.body;
+        const { notes = null, scheduleAssignments = [], sectionId = null } = req.body;
 
         // Get connection for transaction
         const connection = await pool.getConnection();
         
         try {
             await connection.beginTransaction();
+
+            // If sectionId provided, assign section to the student first
+            if (sectionId) {
+                // validate section exists
+                const [sec] = await connection.execute('SELECT SectionID FROM section WHERE SectionID = ? LIMIT 1', [sectionId]);
+                if (!Array.isArray(sec) || sec.length === 0) {
+                    throw new Error('Selected section not found');
+                }
+                await connection.execute('UPDATE studentrecord SET SectionID = ? WHERE StudentID = ?', [sectionId, id]);
+            }
 
             // Update student enrollment status and set status to Active
             await connection.execute(
@@ -1873,7 +2132,7 @@ router.post('/enrollments/:id/approve', async (req, res) => {
                     
                     // Validate schedule exists
                     const [schedule] = await connection.execute(`
-                        SELECT ts.ScheduleID, ts.TeacherID, ts.SubjectID, sec.GradeLevel, sec.SectionName as Section,
+                        SELECT ts.ScheduleID, ts.TeacherID, ts.SubjectID, ts.SectionID, sec.GradeLevel, sec.SectionName as Section,
                                s.SubjectName, tr.FullName as TeacherName
                         FROM teacherschedule ts
                         LEFT JOIN subject s ON s.SubjectID = ts.SubjectID
@@ -1887,6 +2146,11 @@ router.post('/enrollments/:id/approve', async (req, res) => {
                     }
                     
                     const scheduleData = schedule[0];
+
+                    // If sectionId was provided, ensure the schedule belongs to the same section
+                    if (sectionId && scheduleData.SectionID && scheduleData.SectionID !== Number(sectionId)) {
+                        throw new Error('Selected schedule does not belong to the chosen section');
+                    }
                     
                     // Validate teacher exists and is active
                     const [teacher] = await connection.execute(

@@ -236,6 +236,21 @@ export const getAuditTrail = async ({ limit = 50, offset = 0 } = {}) => {
   }
 };
 
+export const purgeOldAuditTrail = async ({ beforeDays = 90 } = {}) => {
+  try {
+    const days = Number.isFinite(Number(beforeDays)) ? Math.max(0, Number(beforeDays)) : 90;
+    // Delete rows older than NOW() - INTERVAL days DAY
+    const [result] = await pool.execute(
+      'DELETE FROM audittrail WHERE ActionDateTime < (NOW() - INTERVAL ? DAY)',
+      [days]
+    );
+    return { affectedRows: result.affectedRows || 0 };
+  } catch (error) {
+    console.error('Error purging old audit trail:', error);
+    throw error;
+  }
+};
+
 export const createAuditTrail = async ({ userId, action, tableAffected = null, recordId = null }) => {
   try {
     const [result] = await pool.execute(
@@ -266,10 +281,22 @@ export const getAttendanceReports = async ({ limit = 50, offset = 0 } = {}) => {
 
 export const createAttendanceReport = async ({ generatedBy, studentId = null, scheduleId = null, dateRangeStart, dateRangeEnd, reportType, reportFile = null }) => {
   try {
-    const [result] = await pool.execute(
-      'INSERT INTO attendancereport (GeneratedBy, StudentID, ScheduleID, DateRangeStart, DateRangeEnd, ReportType, ReportFile) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [generatedBy, studentId, scheduleId, dateRangeStart, dateRangeEnd, reportType, reportFile]
+    // Support both schemas: with or without StudentID/ScheduleID
+    let sql = 'INSERT INTO attendancereport (GeneratedBy, DateRangeStart, DateRangeEnd, ReportType, ReportFile) VALUES (?, ?, ?, ?, ?)';
+    let params = [generatedBy, dateRangeStart, dateRangeEnd, reportType, reportFile];
+
+    // Detect legacy columns and insert accordingly
+    const [cols] = await pool.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendancereport'`
     );
+    const hasStudent = Array.isArray(cols) && cols.some(c => c.COLUMN_NAME === 'StudentID');
+    const hasSchedule = Array.isArray(cols) && cols.some(c => c.COLUMN_NAME === 'ScheduleID');
+    if (hasStudent || hasSchedule) {
+      sql = 'INSERT INTO attendancereport (GeneratedBy, StudentID, ScheduleID, DateRangeStart, DateRangeEnd, ReportType, ReportFile) VALUES (?, ?, ?, ?, ?, ?, ?)';
+      params = [generatedBy, studentId, scheduleId, dateRangeStart, dateRangeEnd, reportType, reportFile];
+    }
+
+    const [result] = await pool.execute(sql, params);
     const [rows] = await pool.execute('SELECT * FROM attendancereport WHERE ReportID = ?', [result.insertId]);
     return rows[0] || null;
   } catch (error) {
@@ -402,6 +429,166 @@ export const createManualAttendance = async ({ studentId, date = null, timeIn = 
     // Normalize values
     const finalDate = date || new Date().toISOString().slice(0, 10);
 
+    // If only TimeIn is provided, try to update an existing row that has TimeOut but no TimeIn (out-only)
+    if (timeIn && !timeOut) {
+      const [pendingInRows] = await pool.execute(
+        `SELECT AttendanceID FROM attendancelog 
+         WHERE StudentID = ? AND Date = ? AND (TimeIn IS NULL OR TimeIn = '') AND TimeOut IS NOT NULL
+         ORDER BY TimeOut DESC LIMIT 1`,
+        [studentId, finalDate]
+      );
+      if (pendingInRows.length > 0) {
+        const attendanceId = pendingInRows[0].AttendanceID;
+        await pool.execute(
+          'UPDATE attendancelog SET TimeIn = ?, ValidatedBy = ? WHERE AttendanceID = ?',
+          [timeIn, validatedBy, attendanceId]
+        );
+
+        // After filling TimeIn, create subject attendance entries using schedules
+        const [studentSchedules] = await pool.execute(`
+          SELECT 
+            ts.ScheduleID,
+            ts.SubjectID, 
+            s.SubjectName, 
+            ts.TimeIn, 
+            ts.TimeOut, 
+            ts.GracePeriod,
+            ts.DayOfWeek
+          FROM studentschedule ss
+          JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+          JOIN subject s ON s.SubjectID = ts.SubjectID
+          WHERE ss.StudentID = ? 
+            AND ts.DayOfWeek = CASE DAYNAME(?)
+              WHEN 'Monday' THEN 'Mon'
+              WHEN 'Tuesday' THEN 'Tue'
+              WHEN 'Wednesday' THEN 'Wed'
+              WHEN 'Thursday' THEN 'Thu'
+              WHEN 'Friday' THEN 'Fri'
+              WHEN 'Saturday' THEN 'Sat'
+              WHEN 'Sunday' THEN 'Sun'
+            END
+        `, [studentId, finalDate]);
+
+        for (const schedule of studentSchedules) {
+          try {
+            const finalStatus = (status === 'Excused')
+              ? 'Excused'
+              : calculateAttendanceStatus(timeIn, schedule.TimeIn, schedule.TimeOut, schedule.GracePeriod);
+            await createSubjectAttendance({
+              studentId,
+              subjectId: schedule.SubjectID,
+              date: finalDate,
+              status: finalStatus,
+              validatedBy,
+              timeIn
+            });
+          } catch (e) {
+            console.error('Subject attendance creation failed (fill TimeIn):', e);
+          }
+        }
+
+        const [rows] = await pool.execute(
+          `SELECT al.AttendanceID, al.StudentID, al.Date, al.TimeIn, al.TimeOut,
+                  s.FullName, s.GradeLevel, sec.SectionName as Section
+           FROM attendancelog al
+           LEFT JOIN studentrecord s ON s.StudentID = al.StudentID
+           LEFT JOIN section sec ON sec.SectionID = s.SectionID
+           WHERE al.AttendanceID = ?`,
+          [attendanceId]
+        );
+        return rows[0] || null;
+      }
+    }
+
+    // If only TimeOut is provided, try to update an existing TimeIn row for the same date
+    if (!timeIn && timeOut) {
+      // Find the most recent open attendance entry for the day (has TimeIn but no TimeOut)
+      const [openRows] = await pool.execute(
+        `SELECT AttendanceID FROM attendancelog 
+         WHERE StudentID = ? AND Date = ? AND TimeIn IS NOT NULL AND (TimeOut IS NULL OR TimeOut = '')
+         ORDER BY TimeIn DESC LIMIT 1`,
+        [studentId, finalDate]
+      );
+
+      if (openRows.length > 0) {
+        const attendanceId = openRows[0].AttendanceID;
+        await pool.execute(
+          'UPDATE attendancelog SET TimeOut = ?, ValidatedBy = ? WHERE AttendanceID = ?',
+          [timeOut, validatedBy, attendanceId]
+        );
+
+        // If timing out early, mark any upcoming classes for the day as Absent
+        try {
+          const [remainingSchedules] = await pool.execute(`
+            SELECT 
+              ts.SubjectID,
+              ts.TimeIn,
+              ts.TimeOut,
+              ts.GracePeriod
+            FROM studentschedule ss
+            JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+            WHERE ss.StudentID = ? 
+              AND ts.DayOfWeek = CASE DAYNAME(?)
+                WHEN 'Monday' THEN 'Mon'
+                WHEN 'Tuesday' THEN 'Tue'
+                WHEN 'Wednesday' THEN 'Wed'
+                WHEN 'Thursday' THEN 'Thu'
+                WHEN 'Friday' THEN 'Fri'
+                WHEN 'Saturday' THEN 'Sat'
+                WHEN 'Sunday' THEN 'Sun'
+              END
+              AND ts.TimeIn >= ?
+          `, [studentId, finalDate, timeOut]);
+
+          for (const schedule of remainingSchedules) {
+            try {
+              // Skip if a subject attendance already exists for this subject/date
+              const [existing] = await pool.execute(
+                `SELECT SubjectAttendanceID, Status FROM subjectattendance
+                 WHERE StudentID = ? AND SubjectID = ? AND Date = ? LIMIT 1`,
+                [studentId, schedule.SubjectID, finalDate]
+              );
+              if (existing.length === 0) {
+                await createSubjectAttendance({
+                  studentId,
+                  subjectId: schedule.SubjectID,
+                  date: finalDate,
+                  status: 'Absent',
+                  validatedBy
+                });
+              } else {
+                // If already exists (likely marked Present from time-in), update to Absent unless Excused
+                const currentStatus = (existing[0].Status || '').toLowerCase();
+                if (currentStatus !== 'excused' && currentStatus !== 'absent') {
+                  await pool.execute(
+                    `UPDATE subjectattendance SET Status = ?, ValidatedBy = ?
+                     WHERE SubjectAttendanceID = ?`,
+                    ['Absent', validatedBy, existing[0].SubjectAttendanceID]
+                  );
+                }
+              }
+            } catch (e) {
+              console.error('Failed to mark remaining subject as absent on early TimeOut:', e);
+            }
+          }
+        } catch (schedErr) {
+          console.error('Error checking remaining schedules on TimeOut:', schedErr);
+        }
+
+        const [rows] = await pool.execute(
+          `SELECT al.AttendanceID, al.StudentID, al.Date, al.TimeIn, al.TimeOut,
+                  s.FullName, s.GradeLevel, sec.SectionName as Section
+           FROM attendancelog al
+           LEFT JOIN studentrecord s ON s.StudentID = al.StudentID
+           LEFT JOIN section sec ON sec.SectionID = s.SectionID
+           WHERE al.AttendanceID = ?`,
+          [attendanceId]
+        );
+        return rows[0] || null;
+      }
+      // If no open row exists, fall through to insert a new row with only TimeOut
+    }
+
     // Create attendance log entry (without status)
     const [result] = await pool.execute(
       'INSERT INTO attendancelog (StudentID, Date, TimeIn, TimeOut, ValidatedBy) VALUES (?, ?, ?, ?, ?)',
@@ -435,7 +622,7 @@ export const createManualAttendance = async ({ studentId, date = null, timeIn = 
     
     console.log(`Found ${studentSchedules.length} schedules for student ${studentId}`);
     
-    // Create subject attendance with proper status calculation
+    // Create subject attendance with proper status calculation (only for Time In events)
     for (const schedule of studentSchedules) {
       try {
         let finalStatus;
@@ -458,14 +645,17 @@ export const createManualAttendance = async ({ studentId, date = null, timeIn = 
         
         console.log(`Creating subject attendance for subject ${schedule.SubjectID} with status ${finalStatus}`);
         
-        await createSubjectAttendance({
-          studentId,
-          subjectId: schedule.SubjectID,
-          date: finalDate,
-          status: finalStatus,
-          validatedBy,
-          timeIn
-        });
+        // Only create subject attendance on Time In; skip when it's a pure Time Out event
+        if (timeIn) {
+          await createSubjectAttendance({
+            studentId,
+            subjectId: schedule.SubjectID,
+            date: finalDate,
+            status: finalStatus,
+            validatedBy,
+            timeIn
+          });
+        }
         
         console.log(`Successfully created subject attendance for subject ${schedule.SubjectID}`);
       } catch (subjectError) {
@@ -573,6 +763,34 @@ export const getSectionById = async (sectionId) => {
 
 // Note: Section schedule functions have been removed. All scheduling now uses the teacherschedule table.
 
+// ===== System Settings =====
+export const getSystemSetting = async (key, defaultValue = null) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT SettingValue FROM system_settings WHERE SettingKey = ? LIMIT 1',
+      [key]
+    );
+    if (rows.length === 0) return defaultValue;
+    return rows[0].SettingValue;
+  } catch (error) {
+    console.error('Error fetching system setting:', error);
+    return defaultValue;
+  }
+};
+
+export const setSystemSetting = async (key, value, updatedBy = null) => {
+  try {
+    await pool.execute(
+      'INSERT INTO system_settings (SettingKey, SettingValue, UpdatedBy) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE SettingValue = VALUES(SettingValue), UpdatedBy = VALUES(UpdatedBy)',
+      [key, String(value), updatedBy]
+    );
+    return true;
+  } catch (error) {
+    console.error('Error updating system setting:', error);
+    throw error;
+  }
+};
+
 // Recalculate attendance status for existing records
 export const recalculateAttendanceStatus = async (studentId, date) => {
   try {
@@ -659,11 +877,13 @@ export const createParentUserAndProfile = async ({ fullName, contactInfo = null,
     let userId;
     if (exist.length > 0) {
       userId = exist[0].UserID;
+      // Ensure parent account is active upon registration
+      await connection.execute('UPDATE useraccount SET Status = ? WHERE UserID = ?', ['Active', userId]);
     } else {
       const hash = await bcrypt.hash(password, 10);
       const [u] = await connection.execute(
-        'INSERT INTO useraccount (Username, PasswordHash, Role) VALUES (?, ?, ?)',
-        [email, hash, 'Parent']
+        'INSERT INTO useraccount (Username, PasswordHash, Role, Status) VALUES (?, ?, ?, ?)',
+        [email, hash, 'Parent', 'Active']
       );
       userId = u.insertId;
     }
@@ -795,7 +1015,7 @@ export const createStudent = async ({ fullName, dateOfBirth, gender, placeOfBirt
     // Discover columns
     const dbName = process.env.DB_NAME || 'attendance';
     const [cols] = await pool.execute(
-      'SELECT COLUMN_NAME, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME IN ("FingerprintTemplate","CreatedBy","ParentID","ParentContact")',
+      'SELECT COLUMN_NAME, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME IN ("FingerprintTemplate","CreatedBy","ParentID","ParentContact","EnrollmentDate","EnrollmentStatus")',
       [dbName, 'studentrecord']
     );
     const hasFingerprint = cols.some(c => c.COLUMN_NAME === 'FingerprintTemplate');
@@ -804,7 +1024,28 @@ export const createStudent = async ({ fullName, dateOfBirth, gender, placeOfBirt
     const hasParentId = cols.some(c => c.COLUMN_NAME === 'ParentID');
 
     const columns = ['FullName', 'DateOfBirth', 'Gender', 'PlaceOfBirth', 'Nationality', 'Address', 'GradeLevel', 'SectionID', 'Status'];
-    const values = [fullName, dateOfBirth, gender, placeOfBirth, nationality, address, gradeLevel, sectionId, 'Pending'];
+    const values = [
+      fullName,
+      (dateOfBirth ?? '2000-01-01'),
+      (gender ?? 'Other'),
+      placeOfBirth ?? null,
+      nationality ?? null,
+      address ?? null,
+      (gradeLevel ?? '1'),
+      sectionId ?? null,
+      'Active'
+    ];
+    // Enrollment fields if available
+    const hasEnrollmentDate = cols.some(c => c.COLUMN_NAME === 'EnrollmentDate');
+    const hasEnrollmentStatus = cols.some(c => c.COLUMN_NAME === 'EnrollmentStatus');
+    if (hasEnrollmentDate) {
+      columns.push('EnrollmentDate');
+      values.push(new Date());
+    }
+    if (hasEnrollmentStatus) {
+      columns.push('EnrollmentStatus');
+      values.push('approved');
+    }
 
     if (hasFingerprint) {
       // Supply empty buffer when not nullable
@@ -854,6 +1095,11 @@ export const updateStudent = async (studentId, updates) => {
     if (updates.gradeLevel !== undefined) { fields.push('GradeLevel = ?'); values.push(updates.gradeLevel); }
     if (updates.sectionId !== undefined) { fields.push('SectionID = ?'); values.push(updates.sectionId); }
     if (updates.parentId !== undefined) { fields.push('ParentID = ?'); values.push(updates.parentId); }
+    if (updates.dateOfBirth !== undefined) { fields.push('DateOfBirth = ?'); values.push(updates.dateOfBirth); }
+    if (updates.gender !== undefined) { fields.push('Gender = ?'); values.push(updates.gender); }
+    if (updates.placeOfBirth !== undefined) { fields.push('PlaceOfBirth = ?'); values.push(updates.placeOfBirth); }
+    if (updates.nationality !== undefined) { fields.push('Nationality = ?'); values.push(updates.nationality); }
+    if (updates.address !== undefined) { fields.push('Address = ?'); values.push(updates.address); }
     if (fields.length === 0) {
       const [rows] = await pool.execute('SELECT * FROM studentrecord WHERE StudentID = ?', [studentId]);
       return rows[0] || null;
