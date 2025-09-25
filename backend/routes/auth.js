@@ -191,9 +191,18 @@ router.post('/login-with-otp', validateLogin, async (req, res) => {
       await sendOtpEmail(email, otp);
     } catch (emailError) {
       console.error('OTP email send failed:', emailError);
+      if (String(process.env.EMAIL_FALLBACK_TO_LOG || 'false') === 'true') {
+        console.log(`[OTP DEBUG] userId=${user.UserID} email=${email} otp=${otp} expiresAt=${expiresAt.toISOString()}`);
+      }
     }
 
-    res.json({ success: true, message: 'OTP sent to email', data: { userId: user.UserID } });
+    const responsePayload = { userId: user.UserID };
+    if (String(process.env.EMAIL_DEBUG_RETURN_OTP || 'false') === 'true') {
+      responsePayload.otp = otp; // return OTP only when explicitly enabled for testing
+      responsePayload.expiresAt = expiresAt.toISOString();
+    }
+
+    res.json({ success: true, message: 'OTP generated', data: responsePayload });
   } catch (error) {
     console.error('Login-with-OTP error:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
