@@ -1,6 +1,6 @@
 import { ExcuseLetter, ExcuseLetterFormData, ExcuseLetterReviewData } from '../../../types';
 
-const API_BASE_URL = 'https://attendance-test-production-90d4.up.railway.app/api';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
 const getToken = (): string | null => localStorage.getItem('auth_token');
 

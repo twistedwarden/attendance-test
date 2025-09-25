@@ -5,6 +5,7 @@ A comprehensive attendance management system with role-based access control for 
 ## 🚀 Features
 
 ### Frontend (React + TypeScript)
+
 - **Modern UI**: Built with React 18, TypeScript, and Tailwind CSS
 - **Role-based Access**: Separate dashboards for Admin, Teacher, and Parent
 - **Responsive Design**: Works seamlessly on desktop and mobile devices
@@ -12,6 +13,7 @@ A comprehensive attendance management system with role-based access control for 
 - **Beautiful Components**: Modern UI with shadcn/ui components
 
 ### Backend (Node.js + Express)
+
 - **JWT Authentication**: Secure token-based authentication
 - **Role-based Authorization**: Admin, Teacher, and Parent permissions
 - **Password Security**: bcrypt hashing with salt rounds
@@ -31,6 +33,7 @@ A comprehensive attendance management system with role-based access control for 
 ## 🛠️ Tech Stack
 
 ### Frontend
+
 - **React 18** with TypeScript
 - **Vite** for fast development
 - **Tailwind CSS** for styling
@@ -40,6 +43,7 @@ A comprehensive attendance management system with role-based access control for 
 - **Zod** for validation
 
 ### Backend
+
 - **Node.js** with Express
 - **JWT** for authentication
 - **bcryptjs** for password hashing
@@ -51,16 +55,19 @@ A comprehensive attendance management system with role-based access control for 
 ## 📦 Quick Start
 
 ### Prerequisites
+
 - Node.js (v16 or higher)
 - npm or yarn
 
 ### 1. Clone and Setup
+
 ```bash
 git clone <repository-url>
 cd attendancev2
 ```
 
 ### 2. Frontend Setup
+
 ```bash
 # Install dependencies
 npm install
@@ -70,6 +77,7 @@ npm run dev
 ```
 
 ### 3. Backend Setup
+
 ```bash
 # Navigate to backend directory
 cd backend
@@ -85,35 +93,39 @@ npm run dev
 ```
 
 ### 4. Access the Application
+
 - **Frontend**: http://localhost:5173
 - **Backend API**: http://localhost:5000
 - **Health Check**: http://localhost:5000/health
 
 ## 🔐 Default Users
 
-| Email | Password | Role | Name |
-|-------|----------|------|------|
-| admin@foothills.edu | admin123 | Admin | Admin User |
+| Email                       | Password   | Role    | Name               |
+| --------------------------- | ---------- | ------- | ------------------ |
+| admin@foothills.edu         | admin123   | Admin   | Admin User         |
 | sarah.johnson@foothills.edu | teacher123 | Teacher | Mrs. Sarah Johnson |
-| michael.chen@foothills.edu | teacher123 | Teacher | Mr. Michael Chen |
-| emily.davis@foothills.edu | teacher123 | Teacher | Ms. Emily Davis |
-| sarah.johnson@email.com | parent123 | Parent | Sarah Johnson |
+| michael.chen@foothills.edu  | teacher123 | Teacher | Mr. Michael Chen   |
+| emily.davis@foothills.edu   | teacher123 | Teacher | Ms. Emily Davis    |
+| sarah.johnson@email.com     | parent123  | Parent  | Sarah Johnson      |
 
 ## 📋 User Roles & Permissions
 
 ### 👨‍💼 Admin
+
 - Manage all users (create, read, update, delete)
 - View system-wide attendance reports
 - Access to all features and data
 - System configuration and settings
 
 ### 👩‍🏫 Teacher
+
 - View and manage attendance for assigned classes
 - Generate attendance reports for their sections
 - Update student attendance records
 - Access to teacher-specific dashboard
 
 ### 👨‍👩‍👧‍👦 Parent
+
 - View attendance records for their children
 - Receive attendance notifications
 - Access to parent-specific dashboard
@@ -122,6 +134,7 @@ npm run dev
 ## 🔌 API Endpoints
 
 ### Authentication
+
 - `POST /api/auth/login` - User login
 - `POST /api/auth/register` - Register new user (Admin only)
 - `GET /api/auth/profile` - Get user profile
@@ -131,6 +144,7 @@ npm run dev
 - `GET /api/auth/verify` - Verify token
 
 ### User Management (Admin only)
+
 - `GET /api/users` - Get all users
 - `GET /api/users/:id` - Get user by ID
 - `PUT /api/users/:id` - Update user
@@ -162,6 +176,7 @@ The system includes modern, accessible UI components:
 ## 📱 Responsive Design
 
 The application is fully responsive and works on:
+
 - Desktop computers
 - Tablets
 - Mobile phones
@@ -169,29 +184,53 @@ The application is fully responsive and works on:
 
 ## 🚀 Deployment
 
-### Frontend
-```bash
-npm run build
-# Serve the dist folder with nginx or similar
-```
+Deploy with: Frontend on Vercel, Backend and MySQL on Railway.
 
-### Backend
-```bash
-cd backend
-npm start
-# Use PM2 or similar for production
-```
+### 1) Railway - MySQL database
+
+- Create a MySQL service on Railway. Copy the provided envs: `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`, `MYSQLPASSWORD`, `MYSQLDATABASE`.
+
+### 2) Railway - Backend (Node/Express)
+
+- Create a new service from the `backend/` directory.
+- Set environment variables:
+  - `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`, `MYSQLPASSWORD`, `MYSQLDATABASE` (from DB service)
+  - `JWT_SECRET`, `JWT_EXPIRES_IN`
+  - `CORS_ORIGIN=https://your-frontend.vercel.app`
+  - `RATE_LIMIT_WINDOW_MS=900000`, `RATE_LIMIT_MAX_REQUESTS=100`
+  - `SMTP_*` if email is required
+- Start command: `npm start`
+- Copy the public URL, e.g. `https://your-backend.up.railway.app`
+
+### 3) Vercel - Frontend (Vite)
+
+- Create a Vercel project from the repo root.
+- Set Environment Variable:
+  - `VITE_API_URL=https://your-backend.up.railway.app/api`
+- Deploy. Use the given Vercel domain in `CORS_ORIGIN`.
+
+### 4) Local dev envs
+
+- Frontend: `.env` with `VITE_API_URL=http://localhost:5000/api`
+- Backend: `backend/.env` from `backend/env.example` or Railway MYSQL\* vars
+
+### 5) Health checks
+
+- Backend: `/health` should return JSON with success=true
 
 ## 🔧 Development
 
 ### Adding New Features
+
 1. **Backend**: Add routes in `backend/routes/`
 2. **Frontend**: Add components in `src/modules/`
 3. **Testing**: Test API endpoints and UI components
 4. **Documentation**: Update README and API docs
 
 ### Database
+
 Currently uses in-memory storage for development. For production:
+
 1. Choose a database (PostgreSQL, MongoDB, etc.)
 2. Update `backend/config/database.js`
 3. Add proper database models and connections
@@ -218,6 +257,7 @@ MIT License - see LICENSE file for details.
 ## 🆘 Support
 
 For issues or questions:
+
 1. Check the documentation
 2. Review the logs
 3. Test API endpoints independently
@@ -225,4 +265,4 @@ For issues or questions:
 
 ---
 
-**Built with ❤️ for modern education management** 
+**Built with ❤️ for modern education management**

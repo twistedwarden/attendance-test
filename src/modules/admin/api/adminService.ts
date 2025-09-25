@@ -10,8 +10,7 @@ export interface AdminUser {
 	contactInfo?: string;
 }
 
-
-const API_BASE_URL = 'https://attendance-test-rl28.onrender.com/api';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
 const getToken = (): string | null => {
 	return localStorage.getItem('auth_token');

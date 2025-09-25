@@ -34,7 +34,7 @@ interface EnrollmentStats {
 }
 
 export default function EnrollmentReview() {
-  const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
+  const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api';
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [stats, setStats] = useState<EnrollmentStats>({ total: 0, pending: 0, approved: 0, declined: 0 });
   const [loading, setLoading] = useState(false);
