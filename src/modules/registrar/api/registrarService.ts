@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://attendance-test-rl28.onrender.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://attendance-test-production-90d4.up.railway.app/api';
 
 class RegistrarService {
   private static getAuthHeaders() {
