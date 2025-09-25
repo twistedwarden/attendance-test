@@ -3,7 +3,7 @@ import { User, LoginFormData } from '../../types';
 const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
 export class AuthService {
-  static async login(credentials: LoginFormData): Promise<User | null> {
+  static async login(_credentials: LoginFormData): Promise<User | null> {
     // Direct login is disabled - OTP authentication is required
     throw new Error('Direct login is disabled. Please use OTP authentication.');
   }
