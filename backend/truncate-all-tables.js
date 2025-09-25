@@ -17,6 +17,7 @@ const pool = mysql.createPool({
 
 // List of all tables in the database (in order to handle foreign key constraints)
 const tables = [
+  // Tables with no foreign key dependencies (can be truncated first)
   'attendancereport',
   'subjectattendance', 
   'attendancelog',
@@ -27,6 +28,16 @@ const tables = [
   'notificationlog',
   'audittrail',
   'loginactivity',
+  'fingerprint_log',
+  'esp32_devices',
+  'excuseletter',
+  'notification',
+  'notification_read_status',
+  'enrollment_review',
+  'system_settings',
+  'schema_migrations',
+  
+  // Tables with foreign key dependencies (truncate after dependent tables)
   'studentrecord',
   'teacherrecord',
   'adminrecord',
