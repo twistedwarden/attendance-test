@@ -1109,7 +1109,7 @@ export const createStudent = async ({ fullName, dateOfBirth, gender, placeOfBirt
     }
     if (hasEnrollmentStatus) {
       columns.push('EnrollmentStatus');
-      values.push('approved');
+      values.push('pending');
     }
 
     if (hasFingerprint) {
