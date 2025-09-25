@@ -19,7 +19,7 @@ import {
 } from '../config/database.js';
 import { authenticateToken, requireAdmin, requireRole } from '../middleware/auth.js';
 import { validateLogin, validateUserCreation, validateUserUpdate } from '../middleware/validation.js';
-import nodemailer from 'nodemailer';
+import { sendEmail } from '../config/email.js';
 
 const router = express.Router();
 
@@ -67,56 +67,18 @@ const getDisplayName = async (userId, role) => {
   return null;
 };
 
-// Email sending function
+// Email sending function (shared transporter)
 const sendOtpEmail = async (email, otp) => {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: String(process.env.SMTP_SECURE || 'false') === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
-  const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
-  const fromName = process.env.SMTP_FROM_NAME || 'Attendance System';
-
   const subject = 'Your OTP Code';
   const html = `<p>Your OTP code is: <b>${otp}</b></p><p>This code will expire in 10 minutes.</p>`;
-
-  await transporter.sendMail({
-    from: `${fromName} <${fromEmail}>`,
-    to: email,
-    subject,
-    html,
-  });
+  await sendEmail({ to: email, subject, html });
 };
 
 // Registration OTP email
 const sendRegistrationOtpEmail = async (email, otp) => {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: String(process.env.SMTP_SECURE || 'false') === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
-  const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
-  const fromName = process.env.SMTP_FROM_NAME || 'Attendance System';
-
   const subject = 'Your Registration OTP Code';
   const html = `<p>Use this code to complete your registration: <b>${otp}</b></p><p>This code will expire in 10 minutes.</p>`;
-
-  await transporter.sendMail({
-    from: `${fromName} <${fromEmail}>`,
-    to: email,
-    subject,
-    html,
-  });
+  await sendEmail({ to: email, subject, html });
 };
 
 // Simple login route for testing (bypasses OTP) - DISABLED

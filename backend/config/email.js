@@ -8,10 +8,21 @@ const getTransporter = () => {
 			host: process.env.SMTP_HOST,
 			port: Number(process.env.SMTP_PORT || 587),
 			secure: String(process.env.SMTP_SECURE || 'false') === 'true',
+			requireTLS: String(process.env.SMTP_REQUIRE_TLS || 'false') === 'true',
+			ignoreTLS: String(process.env.SMTP_IGNORE_TLS || 'false') === 'true',
+			name: process.env.SMTP_NAME || undefined,
+			connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 15000),
+			greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000),
+			socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 20000),
+			pool: String(process.env.SMTP_POOL || 'true') === 'true',
+			maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS || 3),
+			maxMessages: Number(process.env.SMTP_MAX_MESSAGES || 100),
 			auth: {
 				user: process.env.SMTP_USER,
 				pass: process.env.SMTP_PASS,
 			},
+			// Allow self-signed if explicitly enabled
+			tls: (String(process.env.SMTP_ALLOW_SELF_SIGNED || 'false') === 'true') ? { rejectUnauthorized: false } : undefined,
 		});
 	}
 	return transporter;
