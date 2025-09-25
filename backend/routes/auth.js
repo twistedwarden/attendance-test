@@ -186,7 +186,12 @@ router.post('/login-with-otp', validateLogin, async (req, res) => {
 
     await setUserOtp(user.UserID, otp, expiresAt);
 
-    await sendOtpEmail(email, otp);
+    // Try to send OTP email, but don't fail login step if email provider is unreachable
+    try {
+      await sendOtpEmail(email, otp);
+    } catch (emailError) {
+      console.error('OTP email send failed:', emailError);
+    }
 
     res.json({ success: true, message: 'OTP sent to email', data: { userId: user.UserID } });
   } catch (error) {
