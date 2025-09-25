@@ -11,7 +11,7 @@ export interface AdminUser {
 }
 
 
-const API_BASE_URL = 'https://attendance-test-production.up.railway.app/api';
+const API_BASE_URL = 'https://attendance-test-rl28.onrender.com/api';
 
 const getToken = (): string | null => {
 	return localStorage.getItem('auth_token');

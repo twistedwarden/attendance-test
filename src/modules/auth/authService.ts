@@ -1,6 +1,6 @@
 import { User, LoginFormData } from '../../types';
 
-const API_BASE_URL = 'https://attendance-test-production.up.railway.app/api';
+const API_BASE_URL = 'https://attendance-test-rl28.onrender.com/api';
 
 export class AuthService {
   static async login(credentials: LoginFormData): Promise<User | null> {
