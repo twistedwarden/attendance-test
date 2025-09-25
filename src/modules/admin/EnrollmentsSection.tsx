@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Eye, Check, X, FileText, User, Calendar, MapPin, Phone, Mail, Filter, Download } from 'lucide-react';
+import { Search, Eye, Check, X, FileText, User, Calendar, Phone, Download } from 'lucide-react';
 import { AdminService } from './api/adminService';
 import Modal from './components/Modal';
-import ConfirmModal from './components/ConfirmModal';
+// import ConfirmModal from './components/ConfirmModal';
 import { toast } from 'sonner';
 
 interface Enrollment {
@@ -19,6 +19,7 @@ interface Enrollment {
   enrollmentDate?: string;
   parentName?: string;
   parentContact?: string;
+  parentEmail?: string;
   reviewId?: number;
   reviewStatus?: string;
   reviewDate?: string;
@@ -43,6 +44,10 @@ export default function EnrollmentsSection() {
   const [stats, setStats] = useState<EnrollmentStats>({ total: 0, pending: 0, approved: 0, declined: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [enrollmentEnabled, setEnrollmentEnabled] = useState<boolean>(true);
+  const [confirmToggleOpen, setConfirmToggleOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [pendingToggleValue, setPendingToggleValue] = useState<boolean | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -56,9 +61,47 @@ export default function EnrollmentsSection() {
   const [declineNotes, setDeclineNotes] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   
+  const authToken = useMemo(() => localStorage.getItem('auth_token') || '', []);
+
+  const getPreviewUrl = (filename: string) => {
+    const encoded = encodeURIComponent(filename);
+    const token = authToken;
+    return `/api/registrar/documents/${encoded}?token=${encodeURIComponent(token)}`;
+  };
+
+  const handlePreviewDocument = (filename: string) => {
+    const url = getPreviewUrl(filename);
+    window.open(url, '_blank');
+  };
+
+  const handleDownloadDocument = async (filename: string) => {
+    try {
+      const res = await fetch(`/api/registrar/documents/${encodeURIComponent(filename)}`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (!res.ok) {
+        toast.error('Failed to download document');
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast.error(e?.message || 'Download failed');
+    }
+  };
+  
   // Schedule assignment state
   const [schedules, setSchedules] = useState<any[]>([]);
   const [scheduleAssignments, setScheduleAssignments] = useState<Array<{scheduleId: number}>>([]);
+  const [sections, setSections] = useState<any[]>([]);
+  const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
 
   const loadEnrollments = async (page = 1, status = statusFilter) => {
     try {
@@ -92,7 +135,26 @@ export default function EnrollmentsSection() {
     loadEnrollments();
     loadStats();
     loadSchedules();
+    (async () => {
+      try {
+        const enabled = await AdminService.getEnrollmentEnabled();
+        setEnrollmentEnabled(Boolean(enabled));
+      } catch {}
+    })();
   }, []);
+
+  // Load sections filtered by the enrollee's grade level when Approve modal opens
+  useEffect(() => {
+    (async () => {
+      if (!approveOpen || !selectedEnrollment) return;
+      try {
+        const list = await AdminService.listSections(selectedEnrollment.gradeLevel || undefined, true);
+        setSections(list || []);
+      } catch (e) {
+        console.error('Failed to load sections for grade level', e);
+      }
+    })();
+  }, [approveOpen, selectedEnrollment]);
 
   const loadSchedules = async () => {
     try {
@@ -127,6 +189,10 @@ export default function EnrollmentsSection() {
   };
 
   const addScheduleAssignment = () => {
+    if (!selectedSectionId) {
+      toast.error('Select a section first before adding schedules.');
+      return;
+    }
     setScheduleAssignments([...scheduleAssignments, { scheduleId: 0 }]);
   };
 
@@ -155,6 +221,12 @@ export default function EnrollmentsSection() {
       console.error('No selected enrollment for approval');
       return;
     }
+
+    // Require a section before assigning schedules
+    if (!selectedSectionId) {
+      toast.error('Please select a section before approving.');
+      return;
+    }
     
     // Validate for duplicate schedules before approval
     const assignedScheduleIds = scheduleAssignments
@@ -170,11 +242,12 @@ export default function EnrollmentsSection() {
     try {
       console.log('Approving enrollment:', selectedEnrollment.id, 'with notes:', approveNotes);
       setActionLoading(true);
-      await AdminService.approveEnrollment(selectedEnrollment.id, approveNotes, scheduleAssignments);
+      await AdminService.approveEnrollment(selectedEnrollment.id, approveNotes, scheduleAssignments, selectedSectionId);
       toast.success('Enrollment approved successfully');
       setApproveOpen(false);
       setApproveNotes('');
       setScheduleAssignments([]);
+      setSelectedSectionId(null);
       loadEnrollments(currentPage, statusFilter);
       loadStats();
     } catch (e: any) {
@@ -233,7 +306,29 @@ export default function EnrollmentsSection() {
     <div className="p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Enrollment Management</h1>
-        <p className="text-gray-600">Review and manage student enrollment applications</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <p className="text-gray-600">Review and manage student enrollment applications</p>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-700">Enrollment</span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={enrollmentEnabled}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setPendingToggleValue(next);
+                  setConfirmText('');
+                  setConfirmToggleOpen(true);
+                }}
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+            <span className={`text-xs font-medium ${enrollmentEnabled ? 'text-green-700' : 'text-red-700'}`}>
+              {enrollmentEnabled ? 'Enabled' : 'Disabled'}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -283,6 +378,59 @@ export default function EnrollmentsSection() {
           </div>
         </div>
       </div>
+
+      {/* Confirm Toggle Modal */}
+      {confirmToggleOpen && (
+        <Modal
+          open={confirmToggleOpen}
+          title={`${pendingToggleValue ? 'Enable' : 'Disable'} Admissions/Enrollment`}
+          onClose={() => setConfirmToggleOpen(false)}
+          footer={(
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-4 py-2 border rounded-lg"
+                onClick={() => setConfirmToggleOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50"
+                disabled={(() => {
+                  const shouldType = pendingToggleValue ? 'ENABLE' : 'DISABLE';
+                  return confirmText.trim().toUpperCase() !== shouldType;
+                })()}
+                onClick={async () => {
+                  if (pendingToggleValue === null) return;
+                  const next = pendingToggleValue;
+                  try {
+                    await AdminService.setEnrollmentEnabled(next);
+                    setEnrollmentEnabled(next);
+                    toast.success(`Enrollment ${next ? 'enabled' : 'disabled'}`);
+                    setConfirmToggleOpen(false);
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Failed to update setting');
+                  }
+                }}
+              >
+                Confirm
+              </button>
+            </div>
+          )}
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-gray-700">
+              To confirm, type <span className="font-semibold">{pendingToggleValue ? 'ENABLE' : 'DISABLE'}</span> below and press Confirm.
+            </p>
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder={pendingToggleValue ? 'ENABLE' : 'DISABLE'}
+              className="w-full px-3 py-2 border rounded-lg"
+            />
+          </div>
+        </Modal>
+      )}
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
@@ -368,6 +516,9 @@ export default function EnrollmentsSection() {
                         <div>
                           <div className="text-sm font-medium text-gray-900">{enrollment.parentName || 'N/A'}</div>
                           <div className="text-sm text-gray-500">{enrollment.parentContact || 'N/A'}</div>
+                          {enrollment.parentEmail && (
+                            <div className="text-sm text-gray-500">{enrollment.parentEmail}</div>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -576,6 +727,12 @@ export default function EnrollmentsSection() {
                     <label className="block text-sm font-medium text-gray-700">Contact Information</label>
                     <p className="mt-1 text-sm text-gray-900">{selectedEnrollment.parentContact || 'N/A'}</p>
                   </div>
+                  {selectedEnrollment.parentEmail && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Email</label>
+                      <p className="mt-1 text-sm text-gray-900">{selectedEnrollment.parentEmail}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -584,38 +741,49 @@ export default function EnrollmentsSection() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Documents */}
               {(() => {
-                let documents = selectedEnrollment.documents;
-                if (typeof documents === 'string') {
-                  try {
-                    documents = JSON.parse(documents);
-                  } catch (e) {
-                    documents = null;
-                  }
+                let docs = selectedEnrollment.documents as any;
+                if (typeof docs === 'string') {
+                  try { docs = JSON.parse(docs); } catch { docs = null; }
                 }
-                return documents && Array.isArray(documents) && documents.length > 0 ? (
+                const items = Array.isArray(docs) ? docs : [];
+                return items.length > 0 ? (
                   <div>
                     <h3 className="text-lg font-medium text-gray-900 mb-4">Submitted Documents</h3>
                     <div className="space-y-2">
-                      {documents.map((doc: any, index: number) => (
-                        <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg border">
-                          <div className="flex-shrink-0">
-                            <FileText className="h-5 w-5 text-blue-500" />
+                      {items.map((doc: any, index: number) => {
+                        const filename: string = typeof doc === 'string' ? doc : (doc.filename || doc.name || `document-${index + 1}`);
+                        const displayName: string = (typeof doc === 'object' && (doc.originalName || doc.name)) || filename || `Document ${index + 1}`;
+                        const sizeKb = typeof doc === 'object' && doc.size ? (doc.size / 1024).toFixed(1) : undefined;
+                        const type = typeof doc === 'object' ? doc.type || doc.mimetype : undefined;
+                        return (
+                          <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg border">
+                            <div className="flex-shrink-0">
+                              <FileText className="h-5 w-5 text-blue-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
+                              {type && (<p className="text-xs text-gray-500">{type}</p>)}
+                              {sizeKb && (<p className="text-xs text-gray-500">{sizeKb} KB</p>)}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handlePreviewDocument(filename)}
+                                className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded"
+                                title="Preview"
+                              >
+                                <Eye className="h-4 w-4 mr-1" /> Preview
+                              </button>
+                              <button
+                                onClick={() => handleDownloadDocument(filename)}
+                                className="inline-flex items-center px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded"
+                                title="Download"
+                              >
+                                <Download className="h-4 w-4 mr-1" /> Download
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">
-                              {doc.name || `Document ${index + 1}`}
-                            </p>
-                            {doc.type && (
-                              <p className="text-xs text-gray-500">{doc.type}</p>
-                            )}
-                            {doc.size && (
-                              <p className="text-xs text-gray-500">
-                                {(doc.size / 1024).toFixed(1)} KB
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
@@ -700,77 +868,67 @@ export default function EnrollmentsSection() {
             />
           </div>
 
-          {/* Schedule Assignment Section */}
+          {/* Section and Schedule Assignment Section */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <label className="block text-sm font-medium text-gray-700">Schedule Assignments (Optional)</label>
-              <button
-                type="button"
-                onClick={addScheduleAssignment}
-                className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
-              >
-                <span className="mr-1">+</span> Add Schedule
-              </button>
-            </div>
-            
-            {scheduleAssignments.length > 0 && (
-              <div className="space-y-3 max-h-48 overflow-y-auto">
-                {scheduleAssignments.map((assignment, index) => (
-                  <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-2">
-                      <div className="flex-1">
-                        <select
-                          value={assignment.scheduleId}
-                          onChange={(e) => updateScheduleAssignment(index, Number(e.target.value))}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                        >
-                          <option value={0}>Select Schedule</option>
-                          {schedules
-                            .filter(schedule => {
-                              // Filter out schedules that are already assigned to other slots
-                              const assignedScheduleIds = scheduleAssignments
-                                .map(assignment => assignment.scheduleId)
-                                .filter(id => id > 0);
-                              return !assignedScheduleIds.includes(schedule.id);
-                            })
-                            .map(schedule => (
-                              <option key={schedule.id} value={schedule.id}>
-                                {schedule.subject} - {schedule.teacher} ({schedule.days.join(', ')} {schedule.startTime}-{schedule.endTime})
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeScheduleAssignment(index)}
-                        className="p-1 text-red-600 hover:text-red-800"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                    {assignment.scheduleId > 0 && (
-                      <div className="mt-2 text-xs text-gray-600">
-                        {(() => {
-                          const selectedSchedule = schedules.find(s => s.id === assignment.scheduleId);
-                          return selectedSchedule ? (
-                            <div>
-                              <div><strong>Subject:</strong> {selectedSchedule.subject}</div>
-                              <div><strong>Teacher:</strong> {selectedSchedule.teacher}</div>
-                              <div><strong>Time:</strong> {selectedSchedule.days.join(', ')} {selectedSchedule.startTime}-{selectedSchedule.endTime}</div>
-                              {selectedSchedule.section && <div><strong>Section:</strong> {selectedSchedule.section}</div>}
-                            </div>
-                          ) : null;
-                        })()}
-                      </div>
-                    )}
-                  </div>
-                ))}
+            {/* Section first */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700">Assign Section</label>
+                <span className="text-xs text-gray-600">Grade Level: <span className="font-medium text-gray-900">{selectedEnrollment?.gradeLevel || 'N/A'}</span></span>
               </div>
-            )}
-            
-            {scheduleAssignments.length === 0 && (
-              <p className="text-sm text-gray-500 italic">No schedules assigned. Student can be assigned schedules later.</p>
-            )}
+              <select
+                value={selectedSectionId ?? 0}
+                onChange={(e) => setSelectedSectionId(Number(e.target.value) || null)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value={0}>Select Section</option>
+                {sections.map((sec: any) => (
+                  <option key={sec.SectionID || sec.id} value={sec.SectionID || sec.id}>
+                    {(sec.SectionName || sec.sectionName || sec.name) + (sec.GradeLevel ? ` - ${sec.GradeLevel}` : '')}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">You must select a section before assigning schedules.</p>
+            </div>
+
+            <div className="mb-2">
+              <label className="block text-sm font-medium text-gray-700">Schedule Assignments (Optional)</label>
+            </div>
+
+            <div className={`border border-gray-300 rounded-lg max-h-48 overflow-y-auto divide-y ${!selectedSectionId ? 'opacity-50 pointer-events-none' : ''}`}>
+              {schedules
+                .filter(s => !selectedSectionId || s.sectionId === selectedSectionId)
+                .map(schedule => {
+                  const checked = scheduleAssignments.some(a => a.scheduleId === schedule.id);
+                  return (
+                    <label key={schedule.id} className="flex items-center px-3 py-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mr-3"
+                        checked={checked}
+                        disabled={!selectedSectionId}
+                        onChange={(e) => {
+                          setScheduleAssignments(prev => {
+                            const set = new Set(prev.map(p => p.scheduleId));
+                            if (e.target.checked) {
+                              set.add(schedule.id);
+                            } else {
+                              set.delete(schedule.id);
+                            }
+                            return Array.from(set).map(id => ({ scheduleId: id }));
+                          });
+                        }}
+                      />
+                      <span className="text-gray-700">
+                        {schedule.subject} - {schedule.teacher} ({schedule.days.join(', ')} {schedule.startTime}-{schedule.endTime})
+                      </span>
+                    </label>
+                  );
+                })}
+              {schedules.filter(s => !selectedSectionId || s.sectionId === selectedSectionId).length === 0 && (
+                <div className="px-3 py-2 text-sm text-gray-500">{selectedSectionId ? 'No schedules for selected section.' : 'Select a section to assign schedules.'}</div>
+              )}
+            </div>
           </div>
           <div className="flex justify-end space-x-2 pt-4">
             <button

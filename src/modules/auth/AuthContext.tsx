@@ -106,6 +106,26 @@ function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
+  // Hydrate user from stored token (e.g., after registration auto-login)
+  const hydrateFromStoredSession = async (): Promise<User | null> => {
+    setIsLoading(true);
+    try {
+      const token = AuthService.getStoredToken();
+      const storedUser = AuthService.getStoredUser();
+      if (!token || !storedUser) return null;
+      const validatedUser = await AuthService.validateToken(token);
+      if (validatedUser) {
+        setUser(validatedUser);
+        return validatedUser;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const resetOtpPhase = () => {
     setOtpPhase(false);
     setOtpUserId(null);
@@ -121,6 +141,7 @@ function AuthProvider({ children }: AuthProviderProps) {
     otpPhase,
     otpUserId,
     resetOtpPhase,
+    hydrateFromStoredSession,
   };
 
   return (

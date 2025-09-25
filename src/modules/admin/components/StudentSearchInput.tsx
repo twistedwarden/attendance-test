@@ -15,6 +15,7 @@ interface StudentSearchInputProps {
   onSelect: (student: Student) => void;
   placeholder?: string;
   className?: string;
+  allowedStudentIds?: number[];
 }
 
 export default function StudentSearchInput({ 
@@ -22,7 +23,8 @@ export default function StudentSearchInput({
   onChange, 
   onSelect, 
   placeholder = "Search by ID or name...",
-  className = ""
+  className = "",
+  allowedStudentIds
 }: StudentSearchInputProps) {
   const [suggestions, setSuggestions] = useState<Student[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -65,12 +67,15 @@ export default function StudentSearchInput({
       const searchLower = value.toLowerCase();
       const nameMatch = student.name.toLowerCase().includes(searchLower);
       const idMatch = student.id.toString().includes(searchLower);
-      return nameMatch || idMatch;
+      const matchesQuery = nameMatch || idMatch;
+      // If allowedStudentIds is provided but empty, do not restrict suggestions
+      const matchesAllowed = !allowedStudentIds || allowedStudentIds.length === 0 || allowedStudentIds.includes(student.id);
+      return matchesQuery && matchesAllowed;
     });
 
     setSuggestions(filtered.slice(0, 10)); // Limit to 10 suggestions
     setShowSuggestions(filtered.length > 0);
-  }, [value, allStudents]);
+  }, [value, allStudents, allowedStudentIds]);
 
   // Handle input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -107,7 +107,7 @@ export default function TeacherStudentsView() {
         </div>
       </div>
 
-      {/* Search and Filter */}
+      {/* Search, Filter, Actions */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
@@ -131,6 +131,34 @@ export default function TeacherStudentsView() {
               <option value="studentId">Sort by Student ID</option>
               <option value="attendance">Sort by Attendance</option>
             </select>
+          </div>
+          <div className="flex items-center">
+            <button
+              onClick={() => {
+                const rows = filteredStudents.map(s => ({
+                  StudentID: s.studentId,
+                  Name: s.studentName,
+                  GradeLevel: s.gradeLevel || '',
+                  Section: s.sectionName || ''
+                }));
+                const headers = Object.keys(rows[0] || { StudentID: '', Name: '', GradeLevel: '', Section: '' });
+                const csv = [headers.join(','), ...rows.map(r => headers.map(h => String((r as any)[h]).replaceAll('"', '""')).map(v => /[,"\n]/.test(v) ? `"${v}"` : v).join(','))].join('\n');
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `students-${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                  window.URL.revokeObjectURL(url);
+                  a.remove();
+                }, 0);
+              }}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              Export CSV
+            </button>
           </div>
         </div>
       </div>
@@ -160,13 +188,10 @@ export default function TeacherStudentsView() {
             </div>
 
             {/* Action Buttons */}
-            <div className="mt-4 pt-4 border-t border-gray-200 flex space-x-2">
-              <button className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors">
-                Send Message
-              </button>
+            <div className="mt-4 pt-4 border-t border-gray-200 flex">
               <button
                 onClick={() => setDetailStudentId(student.studentId)}
-                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-3 rounded-lg text-sm font-medium transition-colors">
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-3 rounded-lg text-sm font-medium transition-colors">
                 View Details
               </button>
             </div>

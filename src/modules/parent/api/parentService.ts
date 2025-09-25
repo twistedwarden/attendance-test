@@ -56,6 +56,22 @@ export interface Notification {
   isRead: boolean;
 }
 
+export interface ParentMessageItem {
+  id: number;
+  dateSent: string;
+  status: 'unread' | 'read';
+  type: 'attendance' | 'behavior' | 'academic' | 'general' | string;
+  teacherName?: string | null;
+  studentName?: string | null;
+  message: string;
+}
+
+export interface ParentMessageRecipient {
+  teacherUserId: number;
+  teacherName: string;
+  students: Array<{ studentId: number; studentName: string }>;
+}
+
 export interface SubjectAttendanceRecord {
   attendanceId: number;
   date: string;
@@ -84,6 +100,18 @@ export interface SubjectAttendanceData {
 }
 
 export const ParentService = {
+  // Read enrollment_enabled setting
+  async getEnrollmentEnabled(): Promise<boolean> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const res = await fetch(`${API_BASE_URL}/parent/settings/enrollment`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch enrollment setting');
+    return Boolean(data?.data?.enabled);
+  },
   // Get parent profile data
   async getParentProfile(): Promise<Parent> {
     const token = getToken();
@@ -209,6 +237,53 @@ export const ParentService = {
     if (!res.ok) throw new Error(data.message || 'Failed to fetch notifications');
     
     return data.data || [];
+  },
+
+  // ===== TEACHER MESSAGES =====
+  async getMessages(limit: number = 100): Promise<ParentMessageItem[]> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const params = new URLSearchParams({ limit: String(limit) });
+    const res = await fetch(`${API_BASE_URL}/parent/messages?${params.toString()}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch messages');
+    return data.data || [];
+  },
+
+  async markMessageAsRead(notificationId: number): Promise<void> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(`${API_BASE_URL}/parent/messages/${notificationId}/read`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to mark message as read');
+  },
+
+  async getMessageRecipients(): Promise<ParentMessageRecipient[]> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(`${API_BASE_URL}/parent/messages/recipients`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch recipients');
+    return data.data || [];
+  },
+
+  async sendMessage(payload: { teacherUserId: number; studentId?: number; type?: 'attendance'|'behavior'|'academic'|'general'; message: string }): Promise<void> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(`${API_BASE_URL}/parent/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to send message');
   },
 
   // Mark notification as read

@@ -88,6 +88,8 @@ export default function SchedulesSection() {
   const [teachers, setTeachers] = useState<TeacherVM[]>([]);
   const [studentAssignments, setStudentAssignments] = useState<StudentAssignmentVM[]>([]);
   const [loading, setLoading] = useState(false);
+  // Calendar filters
+  const [calendarSectionId, setCalendarSectionId] = useState<number | ''>('');
   
   // Student assignment modal states
   const [assignmentCreateOpen, setAssignmentCreateOpen] = useState(false);
@@ -179,16 +181,16 @@ export default function SchedulesSection() {
     };
 
     return (
-      <div className="p-6">
-        <div className="grid grid-cols-6 gap-1">
+      <div className="p-3">
+        <div className="grid gap-px" style={{ gridTemplateColumns: '56px repeat(5, minmax(0, 1fr))' }}>
           {/* Time column header */}
-          <div className="bg-gray-100 p-2 text-sm font-medium text-gray-700 border-r">
+          <div className="bg-gray-100 px-1 py-1 text-xs font-medium text-gray-700 border-r">
             Time
           </div>
           
           {/* Day headers */}
           {daysOfWeek.map(day => (
-            <div key={day} className="bg-gray-100 p-2 text-sm font-medium text-gray-700 text-center border-r">
+            <div key={day} className="bg-gray-100 px-1 py-1 text-xs font-medium text-gray-700 text-center border-r">
               {day}
             </div>
           ))}
@@ -197,7 +199,7 @@ export default function SchedulesSection() {
           {timeSlots.map(timeSlot => (
             <React.Fragment key={timeSlot}>
               {/* Time label */}
-              <div className="bg-gray-50 p-2 text-xs text-gray-600 border-r border-b">
+              <div className="bg-gray-50 px-1 py-1 text-[10px] text-gray-600 border-r border-b">
                 {timeSlot}
               </div>
               
@@ -205,21 +207,21 @@ export default function SchedulesSection() {
               {daysOfWeek.map(day => {
                 const daySchedules = getScheduleForTimeSlot(day, timeSlot);
                 return (
-                  <div key={`${day}-${timeSlot}`} className="border-r border-b min-h-[60px] p-1">
+                  <div key={`${day}-${timeSlot}`} className="border-r border-b min-h-[28px] p-0.5">
                     {daySchedules.map(schedule => (
                       <div
                         key={schedule.id}
-                        className="text-xs p-1 rounded mb-1 bg-blue-100 text-blue-800 border border-blue-200"
+                        className="text-[10px] p-0.5 rounded mb-0.5 bg-blue-100 text-blue-800 border border-blue-200"
                         title={`${schedule.subjectName} - ${schedule.sectionName || schedule.section} (${schedule.timeIn}-${schedule.timeOut}) - ${schedule.teacherName}`}
                       >
-                        <div className="font-medium truncate">{schedule.subjectName}</div>
-                        <div className="text-xs opacity-75 truncate">
+                        <div className="font-medium truncate leading-tight">{schedule.subjectName}</div>
+                        <div className="text-[10px] opacity-75 truncate leading-tight">
                           {schedule.gradeLevel} - {schedule.sectionName || schedule.section}
                         </div>
-                        <div className="text-xs opacity-75">
+                        <div className="text-[10px] opacity-75 leading-tight">
                           {schedule.timeIn}-{schedule.timeOut}
                         </div>
-                        <div className="text-xs opacity-75 truncate">
+                        <div className="text-[10px] opacity-75 truncate leading-tight">
                           {schedule.teacherName}
                         </div>
                       </div>
@@ -339,6 +341,8 @@ export default function SchedulesSection() {
       loadSections();
     } else if (viewMode === 'calendar') {
       load();
+      // Ensure sections are available for calendar filter
+      loadSections();
     } else if (viewMode === 'student-assignments') {
       loadStudentAssignments();
     }
@@ -354,12 +358,20 @@ export default function SchedulesSection() {
         (r.sectionName || '').toLowerCase().includes(q)
       );
     } else if (viewMode === 'calendar') {
-      return teacherSchedules.filter(s =>
-        s.gradeLevel.toLowerCase().includes(q) ||
-        s.section.toLowerCase().includes(q) ||
-        s.subjectName.toLowerCase().includes(q) ||
-        s.teacherName.toLowerCase().includes(q)
-      );
+      return teacherSchedules
+        .filter(s =>
+          s.gradeLevel.toLowerCase().includes(q) ||
+          s.section.toLowerCase().includes(q) ||
+          s.subjectName.toLowerCase().includes(q) ||
+          s.teacherName.toLowerCase().includes(q)
+        )
+        .filter(s => {
+          if (calendarSectionId === '') return true;
+          // Prefer matching by SectionID; fallback to name equality
+          return (s.sectionId != null && s.sectionId === calendarSectionId) || (
+            s.sectionName != null && sections.find(sec => sec.id === calendarSectionId)?.sectionName === s.sectionName
+          );
+        });
     } else if (viewMode === 'sections') {
       return sections.filter(s =>
         s.sectionName.toLowerCase().includes(q) ||
@@ -386,7 +398,7 @@ export default function SchedulesSection() {
         (t.username || '').toLowerCase().includes(q)
       );
     }
-  }, [rows, teacherSchedules, sections, subjects, teachers, studentAssignments, search, viewMode]);
+  }, [rows, teacherSchedules, sections, subjects, teachers, studentAssignments, search, viewMode, calendarSectionId]);
 
   const openEdit = (row: ScheduleVM) => {
     console.log('Opening edit for row:', row);
@@ -812,8 +824,8 @@ export default function SchedulesSection() {
       }
       
       // Filter by section if available
-      if (selectedStudent.section && schedule.section) {
-        return schedule.section === selectedStudent.section;
+      if (selectedStudent.section && schedule.sectionName) {
+        return schedule.sectionName === selectedStudent.section;
       }
       
       // If no specific filters match, show all schedules
@@ -830,7 +842,6 @@ export default function SchedulesSection() {
     };
     setSelectedStudent(mappedStudent);
     setFormStudentId(student.id);
-    setFormScheduleId(null); // Reset schedule selection when student changes
   };
 
   const openSectionCreate = () => {
@@ -925,6 +936,20 @@ export default function SchedulesSection() {
           </p>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
+          {viewMode === 'calendar' && (
+            <div className="relative w-full sm:w-64">
+              <select
+                value={calendarSectionId}
+                onChange={(e) => setCalendarSectionId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full pl-3 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">All Sections</option>
+                {sections.map((s) => (
+                  <option key={s.id} value={s.id}>{s.gradeLevel ? `Grade ${s.gradeLevel} - ` : ''}{s.sectionName}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="relative w-full sm:w-72">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
             <input
@@ -1335,11 +1360,6 @@ export default function SchedulesSection() {
               <option value="Grade 5">Grade 5</option>
               <option value="Grade 6">Grade 6</option>
               <option value="Grade 7">Grade 7</option>
-              <option value="Grade 8">Grade 8</option>
-              <option value="Grade 9">Grade 9</option>
-              <option value="Grade 10">Grade 10</option>
-              <option value="Grade 11">Grade 11</option>
-              <option value="Grade 12">Grade 12</option>
             </select>
           </div>
           <div>
@@ -1451,11 +1471,6 @@ export default function SchedulesSection() {
                 <option value="Grade 5">Grade 5</option>
                 <option value="Grade 6">Grade 6</option>
                 <option value="Grade 7">Grade 7</option>
-                <option value="Grade 8">Grade 8</option>
-                <option value="Grade 9">Grade 9</option>
-                <option value="Grade 10">Grade 10</option>
-                <option value="Grade 11">Grade 11</option>
-                <option value="Grade 12">Grade 12</option>
               </select>
             </div>
             <div>
@@ -1698,11 +1713,6 @@ export default function SchedulesSection() {
                 <option value="5">Grade 5</option>
                 <option value="6">Grade 6</option>
                 <option value="7">Grade 7</option>
-                <option value="8">Grade 8</option>
-                <option value="9">Grade 9</option>
-                <option value="10">Grade 10</option>
-                <option value="11">Grade 11</option>
-                <option value="12">Grade 12</option>
               </select>
             </div>
           </div>
@@ -1785,11 +1795,6 @@ export default function SchedulesSection() {
                 <option value="5">Grade 5</option>
                 <option value="6">Grade 6</option>
                 <option value="7">Grade 7</option>
-                <option value="8">Grade 8</option>
-                <option value="9">Grade 9</option>
-                <option value="10">Grade 10</option>
-                <option value="11">Grade 11</option>
-                <option value="12">Grade 12</option>
               </select>
             </div>
           </div>
@@ -1900,7 +1905,7 @@ export default function SchedulesSection() {
                         <div className="text-gray-600">
                           {schedule.days.join(', ')} {schedule.startTime}-{schedule.endTime}
                           {schedule.gradeLevel && ` (Grade ${schedule.gradeLevel})`}
-                          {schedule.section && ` (${schedule.section})`}
+                          {schedule.sectionName && ` (${schedule.sectionName})`}
                         </div>
                       </div>
                     </label>

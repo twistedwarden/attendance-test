@@ -3,7 +3,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { useState } from 'react';
 import StudentEnrollmentForm from './StudentEnrollmentForm';
 
-export default function NoStudentsMessage({ onStudentEnrolled }: { onStudentEnrolled: () => void }) {
+export default function NoStudentsMessage({ onStudentEnrolled, enrollmentEnabled = true }: { onStudentEnrolled: () => void; enrollmentEnabled?: boolean }) {
   const { logout } = useAuth();
   const [showEnrollmentForm, setShowEnrollmentForm] = useState(false);
 
@@ -31,15 +31,25 @@ export default function NoStudentsMessage({ onStudentEnrolled }: { onStudentEnro
             You can enroll your child(ren) using the form below.
           </p>
           
+          {/* Enrollment disabled notice */}
+          {!enrollmentEnabled && (
+            <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900 text-sm">
+              Enrollment is currently closed.
+            </div>
+          )}
+
           {/* Action Buttons */}
           <div className="space-y-3">
-            <button
-              onClick={() => setShowEnrollmentForm(true)}
-              className="w-full inline-flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <UserPlus className="h-5 w-5 mr-2" />
-              Enroll New Student
-            </button>
+            <span className="block" title={enrollmentEnabled ? undefined : 'Enrollment is currently closed.'}>
+              <button
+                onClick={() => setShowEnrollmentForm(true)}
+                disabled={!enrollmentEnabled}
+                className="w-full inline-flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <UserPlus className="h-5 w-5 mr-2" />
+                Enroll New Student
+              </button>
+            </span>
             
             <div className="text-sm text-gray-500">
               or contact the school office for assistance

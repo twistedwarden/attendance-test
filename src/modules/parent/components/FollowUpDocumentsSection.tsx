@@ -41,9 +41,27 @@ export function FollowUpDocumentsSection({ students }: Props) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
     if (!list) return;
+    const MAX_FILES = 10;
+    const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
     const next: File[] = [];
-    for (let i = 0; i < list.length; i += 1) next.push(list.item(i)!);
-    setFiles(next);
+    for (let i = 0; i < list.length; i += 1) {
+      const item = list.item(i)!;
+      if (item.size <= MAX_SIZE_BYTES) next.push(item);
+    }
+    if (next.length < list.length) {
+      setError('Some files were skipped because they exceed 10 MB.');
+    }
+    setFiles(prev => {
+      const combined = [...prev, ...next].slice(0, MAX_FILES);
+      if ([...prev, ...next].length > MAX_FILES) {
+        setError('Only the first 10 files were added (limit reached).');
+      }
+      return combined;
+    });
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -132,9 +150,20 @@ export function FollowUpDocumentsSection({ students }: Props) {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Documents</label>
-          <input type="file" multiple onChange={handleFileChange} className="block" />
+          <input type="file" multiple onChange={handleFileChange} className="block" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+          <p className="text-xs text-gray-500 mt-1">You can select multiple files. Up to 10 files, 10 MB each. Allowed types: PDF, DOC, DOCX, JPG, PNG.</p>
           {files.length > 0 && (
-            <p className="text-xs text-gray-500 mt-1">{files.length} file(s) selected</p>
+            <div className="mt-3 bg-gray-50 rounded-md p-3">
+              <p className="text-xs font-medium text-gray-700 mb-2">Selected files</p>
+              <ul className="space-y-1">
+                {files.map((file, idx) => (
+                  <li key={idx} className="text-xs text-gray-700 flex items-center justify-between">
+                    <span className="flex items-center gap-2"><FileText className="w-3 h-3 text-gray-400" /> {file.name} ({(file.size/1024/1024).toFixed(2)} MB)</span>
+                    <button type="button" className="text-red-600 hover:underline" onClick={() => handleRemoveFile(idx)}>Remove</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
 

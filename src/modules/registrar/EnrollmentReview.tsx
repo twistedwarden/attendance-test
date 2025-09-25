@@ -15,6 +15,8 @@ interface Enrollment {
   enrollmentDate: string;
   parentName: string;
   parentContact: string;
+  parentEmail?: string;
+  address?: string;
   documents: Array<string | { name: string; type?: string; size?: number; url?: string }>;
   additionalInfo?: string;
   reviewNotes?: string;
@@ -48,6 +50,7 @@ export default function EnrollmentReview() {
   const [approveNotes, setApproveNotes] = useState('');
   const [approveSectionId, setApproveSectionId] = useState<string>('');
   const [approveScheduleIds, setApproveScheduleIds] = useState<string[]>([]);
+  const [approveError, setApproveError] = useState<string>('');
   const [schedules, setSchedules] = useState<any[]>([]);
   const [sections, setSections] = useState<any[]>([]);
   const [declineReason, setDeclineReason] = useState('');
@@ -386,6 +389,12 @@ export default function EnrollmentReview() {
     
     try {
       setActionLoading(true);
+      // Validation: cannot assign schedules without a section
+      if (!approveSectionId && approveScheduleIds.length > 0) {
+        setApproveError('Select a section before assigning schedules.');
+        setActionLoading(false);
+        return;
+      }
       await RegistrarService.approveEnrollment(selectedEnrollment.id, {
         notes: approveNotes,
         sectionId: approveSectionId ? Number(approveSectionId) : null,
@@ -396,6 +405,7 @@ export default function EnrollmentReview() {
       setApproveNotes('');
       setApproveSectionId('');
       setApproveScheduleIds([]);
+      setApproveError('');
       setSelectedEnrollment(null);
       loadEnrollments();
       loadStats();
@@ -609,6 +619,9 @@ export default function EnrollmentReview() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">{enrollment.parentName}</div>
                         <div className="text-sm text-gray-500">{enrollment.parentContact}</div>
+                        {enrollment.parentEmail && (
+                          <div className="text-sm text-gray-500">{enrollment.parentEmail}</div>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -675,6 +688,9 @@ export default function EnrollmentReview() {
                         <div className="text-sm text-gray-500">Grade {enrollment.gradeLevel} • {enrollment.section || 'Not assigned'}</div>
                         <div className="text-sm text-gray-500">{enrollment.parentName}</div>
                         <div className="text-sm text-gray-500">{enrollment.parentContact}</div>
+                        {enrollment.parentEmail && (
+                          <div className="text-sm text-gray-500">{enrollment.parentEmail}</div>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col items-end space-y-2">
@@ -788,6 +804,12 @@ export default function EnrollmentReview() {
                     <label className="text-sm font-medium text-gray-700">Grade Level</label>
                     <p className="text-sm text-gray-900">{selectedEnrollment.gradeLevel}</p>
                   </div>
+                  {selectedEnrollment.address && (
+                    <div className="col-span-2">
+                      <label className="text-sm font-medium text-gray-700">Address</label>
+                      <p className="text-sm text-gray-900">{selectedEnrollment.address}</p>
+                    </div>
+                  )}
                   <div>
                     <label className="text-sm font-medium text-gray-700">Parent Name</label>
                     <p className="text-sm text-gray-900">{selectedEnrollment.parentName}</p>
@@ -796,6 +818,12 @@ export default function EnrollmentReview() {
                     <label className="text-sm font-medium text-gray-700">Parent Contact</label>
                     <p className="text-sm text-gray-900">{selectedEnrollment.parentContact}</p>
                   </div>
+                  {selectedEnrollment.parentEmail && (
+                    <div className="col-span-2">
+                      <label className="text-sm font-medium text-gray-700">Parent Email</label>
+                      <p className="text-sm text-gray-900">{selectedEnrollment.parentEmail}</p>
+                    </div>
+                  )}
                 </div>
                 
                 {selectedEnrollment.documents && selectedEnrollment.documents.length > 0 && (
@@ -904,7 +932,15 @@ export default function EnrollmentReview() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Assign Section</label>
                   <select
                     value={approveSectionId}
-                    onChange={(e) => setApproveSectionId(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setApproveSectionId(val);
+                      if (!val) {
+                        // Clear schedules when section is unset
+                        setApproveScheduleIds([]);
+                      }
+                      setApproveError('');
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">Do not assign</option>
@@ -920,7 +956,7 @@ export default function EnrollmentReview() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Assign Schedules</label>
-                  <div className="border border-gray-300 rounded-lg max-h-40 overflow-y-auto divide-y">
+                  <div className={`border border-gray-300 rounded-lg max-h-40 overflow-y-auto divide-y ${!approveSectionId ? 'opacity-50 pointer-events-none' : ''}`}> 
                     {schedules
                       .filter((sch: any) => !approveSectionId || String(sch.sectionId) === String(approveSectionId))
                       .map((sch: any) => {
@@ -932,12 +968,14 @@ export default function EnrollmentReview() {
                               type="checkbox"
                               className="mr-3"
                               checked={checked}
+                              disabled={!approveSectionId}
                               onChange={(e) => {
                                 if (e.target.checked) {
                                   setApproveScheduleIds((prev) => Array.from(new Set([...prev, idStr])));
                                 } else {
                                   setApproveScheduleIds((prev) => prev.filter((v) => v !== idStr));
                                 }
+                                setApproveError('');
                               }}
                             />
                             <span className="text-gray-700">
@@ -947,11 +985,14 @@ export default function EnrollmentReview() {
                         );
                       })}
                     {schedules.filter((sch: any) => !approveSectionId || String(sch.sectionId) === String(approveSectionId)).length === 0 && (
-                      <div className="px-3 py-2 text-sm text-gray-500">No schedules for selected section.</div>
+                      <div className="px-3 py-2 text-sm text-gray-500">{approveSectionId ? 'No schedules for selected section.' : 'Select a section to assign schedules.'}</div>
                     )}
                   </div>
                 </div>
               </div>
+              {approveError && (
+                <div className="mb-3 text-sm text-red-600">{approveError}</div>
+              )}
               
               <div className="flex justify-end space-x-3">
                 <button
@@ -962,7 +1003,7 @@ export default function EnrollmentReview() {
                 </button>
                 <button
                   onClick={handleApprove}
-                  disabled={actionLoading}
+                  disabled={actionLoading || (!approveSectionId && approveScheduleIds.length > 0)}
                   className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
                 >
                   {actionLoading ? 'Approving...' : 'Approve'}

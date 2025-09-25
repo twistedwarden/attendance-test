@@ -58,8 +58,34 @@ export default function LoginPage() {
 
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="max-w-md w-full space-y-6">
+    <div className="h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto relative overflow-hidden">
+      {/* Abstract Background Shapes */}
+      <div className="absolute inset-0 pointer-events-none">
+        {/* Large Circle - Top Left */}
+        <div className="absolute -top-20 -left-20 w-32 h-32 md:w-40 md:h-40 bg-blue-200/30 rounded-full blur-sm"></div>
+        
+        {/* Medium Circle - Top Right */}
+        <div className="absolute top-32 -right-16 w-24 h-24 md:w-32 md:h-32 bg-indigo-200/40 rounded-full blur-sm"></div>
+        
+        {/* Small Circle - Bottom Left */}
+        <div className="absolute bottom-20 left-10 w-20 h-20 md:w-24 md:h-24 bg-blue-300/25 rounded-full blur-sm"></div>
+        
+        {/* Rectangle - Center Right */}
+        <div className="absolute top-1/2 right-0 w-16 h-24 md:w-20 md:h-32 bg-indigo-100/50 rounded-l-2xl blur-sm transform -translate-y-1/2"></div>
+        
+        {/* Triangle-like shape - Bottom Right */}
+        <div className="absolute bottom-0 right-20 w-0 h-0 border-l-[20px] border-r-[20px] border-b-[35px] md:border-l-[30px] md:border-r-[30px] md:border-b-[50px] border-l-transparent border-r-transparent border-b-blue-200/30 blur-sm"></div>
+        
+        {/* Small Rectangle - Center Left */}
+        <div className="absolute top-1/3 left-0 w-12 h-16 md:w-16 md:h-20 bg-blue-100/40 rounded-r-2xl blur-sm"></div>
+        
+        {/* Additional floating shapes - Hidden on mobile for cleaner look */}
+        <div className="hidden md:block absolute top-1/4 left-1/4 w-12 h-12 bg-indigo-200/20 rounded-full blur-sm"></div>
+        <div className="hidden md:block absolute bottom-1/3 right-1/3 w-16 h-16 bg-blue-300/20 rounded-full blur-sm"></div>
+        <div className="hidden md:block absolute top-2/3 left-1/3 w-8 h-8 bg-indigo-100/30 rounded-full blur-sm"></div>
+      </div>
+      
+      <div className="max-w-md w-full space-y-6 relative z-10">
         {/* Header */}
         <div className="text-center">
             <img src="/fcsv3.png" alt="Foothills Christian School" className="h-32 mx-auto" />
@@ -68,7 +94,7 @@ export default function LoginPage() {
         </div>
 
         {/* Login Form */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
+        <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-gray-100">
           <form onSubmit={handleSubmit} className="space-y-5">
 
 

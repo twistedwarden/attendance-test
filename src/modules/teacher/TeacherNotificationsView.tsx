@@ -1,69 +1,61 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Send, MessageSquare, Phone, Mail, Search, Filter } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import TeacherService from './api/teacherService';
 
-interface Message {
-  id: string;
-  studentName: string;
-  parentName: string;
-  parentContact: string;
-  message: string;
-  type: 'attendance' | 'behavior' | 'academic' | 'general';
-  timestamp: string;
-  status: 'sent' | 'delivered' | 'read';
-}
-
-const mockMessages: Message[] = [
-  {
-    id: '1',
-    studentName: 'Emma Johnson',
-    parentName: 'Robert Johnson',
-    parentContact: '+1 (555) 123-4567',
-    message: 'Emma has been doing excellent work in class this week!',
-    type: 'academic',
-    timestamp: '2024-01-15 10:30 AM',
-    status: 'read'
-  },
-  {
-    id: '2',
-    studentName: 'Michael Chen',
-    parentName: 'Lisa Chen',
-    parentContact: '+1 (555) 234-5678',
-    message: 'Michael arrived late today at 8:35 AM.',
-    type: 'attendance',
-    timestamp: '2024-01-15 8:40 AM',
-    status: 'delivered'
-  },
-  {
-    id: '3',
-    studentName: 'Sarah Davis',
-    parentName: 'Mark Davis',
-    parentContact: '+1 (555) 345-6789',
-    message: 'Sarah showed great leadership during group activities today.',
-    type: 'behavior',
-    timestamp: '2024-01-14 3:15 PM',
-    status: 'read'
-  }
-];
+type MessageType = 'attendance' | 'behavior' | 'academic' | 'general';
 
 export default function TeacherNotificationsView() {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | MessageType>('all');
   const [showComposeModal, setShowComposeModal] = useState(false);
-  const [newMessage, setNewMessage] = useState({
-    recipient: '',
+  const [newMessage, setNewMessage] = useState<{ recipientParentUserId: number | ''; type: MessageType; message: string }>({
+    recipientParentUserId: '',
     type: 'general',
     message: ''
   });
+  const [recipients, setRecipients] = useState<Array<{ parentId: number; parentUserId: number; parentName: string; studentNames: string[] }>>([]);
+  const [messages, setMessages] = useState<Array<{ id: number; dateSent: string; status: 'sent'|'read'; type: string; parentName?: string | null; studentName?: string | null; message: string }>>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredMessages = mockMessages.filter(message => {
-    const matchesSearch = message.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         message.parentName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = typeFilter === 'all' || message.type === typeFilter;
-    
-    return matchesSearch && matchesType;
-  });
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const [rcpts, msgs] = await Promise.all([
+          TeacherService.getMessageRecipients(),
+          TeacherService.getMessages(100)
+        ]);
+        if (!mounted) return;
+        setRecipients(rcpts);
+        setMessages(msgs);
+      } catch (e: any) {
+        if (!mounted) return;
+        setError(e?.message || 'Failed to load messages');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, []);
+
+  const filteredMessages = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return messages.filter(m => {
+      const matchesSearch = (
+        (m.studentName || '').toLowerCase().includes(term) ||
+        (m.parentName || '').toLowerCase().includes(term) ||
+        (m.message || '').toLowerCase().includes(term)
+      );
+      const matchesType = typeFilter === 'all' || (m.type as string) === typeFilter;
+      return matchesSearch && matchesType;
+    });
+  }, [messages, searchTerm, typeFilter]);
 
   const getTypeColor = (type: string) => {
     switch (type) {
@@ -84,8 +76,6 @@ export default function TeacherNotificationsView() {
     switch (status) {
       case 'sent':
         return 'text-yellow-600';
-      case 'delivered':
-        return 'text-blue-600';
       case 'read':
         return 'text-green-600';
       default:
@@ -93,15 +83,24 @@ export default function TeacherNotificationsView() {
     }
   };
 
-  const handleSendMessage = () => {
-    // Handle sending message
-    console.log('Sending message:', newMessage);
-    setShowComposeModal(false);
-    setNewMessage({ recipient: '', type: 'general', message: '' });
+  const handleSendMessage = async () => {
+    if (!newMessage.recipientParentUserId || !newMessage.message.trim()) return;
+    try {
+      setLoading(true);
+      await TeacherService.sendMessage({ parentUserId: Number(newMessage.recipientParentUserId), type: newMessage.type, message: newMessage.message.trim() });
+      setShowComposeModal(false);
+      setNewMessage({ recipientParentUserId: '', type: 'general', message: '' });
+      const latest = await TeacherService.getMessages(100);
+      setMessages(latest);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to send message');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -123,7 +122,7 @@ export default function TeacherNotificationsView() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Sent</p>
-              <p className="text-2xl font-bold text-blue-600">{mockMessages.length}</p>
+              <p className="text-2xl font-bold text-blue-600">{messages.length}</p>
             </div>
             <MessageSquare className="h-8 w-8 text-blue-500" />
           </div>
@@ -133,7 +132,7 @@ export default function TeacherNotificationsView() {
             <div>
               <p className="text-sm font-medium text-gray-600">Read Messages</p>
               <p className="text-2xl font-bold text-green-600">
-                {mockMessages.filter(m => m.status === 'read').length}
+                {messages.filter(m => m.status === 'read').length}
               </p>
             </div>
             <div className="text-green-500">
@@ -184,7 +183,7 @@ export default function TeacherNotificationsView() {
             <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
             <select
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
+              onChange={(e) => setTypeFilter(e.target.value as MessageType)}
               className="pl-10 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent appearance-none bg-white"
             >
               <option value="all">All Types</option>
@@ -208,16 +207,18 @@ export default function TeacherNotificationsView() {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center space-x-2 mb-2">
-                    <h4 className="font-medium text-gray-900">{message.studentName}</h4>
-                    <span className="text-sm text-gray-500">•</span>
-                    <span className="text-sm text-gray-500">{message.parentName}</span>
+                    {message.studentName && (
+                      <h4 className="font-medium text-gray-900">{message.studentName}</h4>
+                    )}
+                    {message.studentName && <span className="text-sm text-gray-500">•</span>}
+                    {message.parentName && <span className="text-sm text-gray-500">{message.parentName}</span>}
                     <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getTypeColor(message.type)}`}>
-                      {message.type.charAt(0).toUpperCase() + message.type.slice(1)}
+                      {String(message.type).charAt(0).toUpperCase() + String(message.type).slice(1)}
                     </span>
                   </div>
                   <p className="text-gray-700 mb-3">{message.message}</p>
                   <div className="flex items-center space-x-4 text-sm text-gray-500">
-                    <span>{message.timestamp}</span>
+                    <span>{new Date(message.dateSent).toLocaleString()}</span>
                     <span>•</span>
                     <span className={getStatusColor(message.status)}>
                       {message.status.charAt(0).toUpperCase() + message.status.slice(1)}
@@ -256,21 +257,23 @@ export default function TeacherNotificationsView() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Recipient</label>
                 <select
-                  value={newMessage.recipient}
-                  onChange={(e) => setNewMessage({...newMessage, recipient: e.target.value})}
+                  value={newMessage.recipientParentUserId}
+                  onChange={(e) => setNewMessage({...newMessage, recipientParentUserId: e.target.value ? Number(e.target.value) as any : ''})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 >
                   <option value="">Select a parent...</option>
-                  <option value="robert.johnson">Robert Johnson (Emma's parent)</option>
-                  <option value="lisa.chen">Lisa Chen (Michael's parent)</option>
-                  <option value="mark.davis">Mark Davis (Sarah's parent)</option>
+                  {recipients.map(r => (
+                    <option key={r.parentUserId} value={r.parentUserId}>
+                      {r.parentName} {r.studentNames.length ? `(${r.studentNames.join(', ')})` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Message Type</label>
                 <select
                   value={newMessage.type}
-                  onChange={(e) => setNewMessage({...newMessage, type: e.target.value})}
+                  onChange={(e) => setNewMessage({...newMessage, type: e.target.value as MessageType})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 >
                   <option value="general">General</option>
@@ -306,6 +309,9 @@ export default function TeacherNotificationsView() {
             </div>
           </div>
         </div>
+      )}
+      {error && (
+        <div className="text-red-600 text-sm">{error}</div>
       )}
     </div>
   );

@@ -10,9 +10,10 @@ interface CompactLayoutProps {
   students: Student[];
   parent: Parent | null;
   onEnrollNewStudent?: () => void;
+  enrollmentEnabled?: boolean;
 }
 
-const CompactLayout = ({ selectedStudent, onStudentChange, students, parent, onEnrollNewStudent }: CompactLayoutProps) => {
+const CompactLayout = ({ selectedStudent, onStudentChange, students, parent, onEnrollNewStudent, enrollmentEnabled = true }: CompactLayoutProps) => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const handleMobileMenuToggle = () => {
@@ -34,6 +35,7 @@ const CompactLayout = ({ selectedStudent, onStudentChange, students, parent, onE
         isMobileOpen={isMobileOpen}
         onMobileClose={handleMobileClose}
         onEnrollNewStudent={onEnrollNewStudent}
+        enrollmentEnabled={enrollmentEnabled}
       />
       
       {/* Main Content */}

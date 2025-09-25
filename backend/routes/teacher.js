@@ -80,6 +80,7 @@ router.get('/students', async (req, res) => {
        LEFT JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
        LEFT JOIN section sec ON sec.SectionID = ts.SectionID
        WHERE ss.ScheduleID = ?
+         AND (sr.EnrollmentStatus IN ('approved','enrolled','Active'))
        ORDER BY sr.FullName`,
       [scheduleId]
     );
@@ -126,6 +127,7 @@ router.get('/subject-attendance', async (req, res) => {
        LEFT JOIN subjectattendance sa 
          ON sa.StudentID = ss.StudentID AND sa.SubjectID = ts.SubjectID AND sa.Date = ?
        WHERE ss.ScheduleID = ?
+         AND (sr.EnrollmentStatus IN ('approved','enrolled','Active'))
        ORDER BY sr.FullName`,
       [date, scheduleId]
     );
@@ -440,6 +442,239 @@ router.get('/reports/export', async (req, res) => {
 
 export default router;
 
+// ===== MESSAGES (Teacher -> Parent) =====
+
+// List message recipients (parents within teacher's scope)
+router.get('/messages/recipients', async (req, res) => {
+  try {
+    const teacherUserId = req.user.userId;
+
+    const [rows] = await pool.execute(
+      `SELECT 
+         p.ParentID as parentId,
+         p.FullName as parentName,
+         ua.UserID as parentUserId,
+         GROUP_CONCAT(DISTINCT sr.FullName ORDER BY sr.FullName SEPARATOR ', ') as studentNames
+       FROM teacherschedule ts
+       JOIN studentschedule ss ON ss.ScheduleID = ts.ScheduleID
+       JOIN studentrecord sr ON sr.StudentID = ss.StudentID
+       JOIN parent p ON p.ParentID = sr.ParentID
+       JOIN useraccount ua ON ua.UserID = p.UserID
+       WHERE ts.TeacherID = ?
+       GROUP BY p.ParentID, p.FullName, ua.UserID
+       ORDER BY p.FullName ASC`,
+      [teacherUserId]
+    );
+
+    return res.json({ success: true, data: rows.map(r => ({
+      parentId: r.parentId,
+      parentUserId: r.parentUserId,
+      parentName: r.parentName,
+      studentNames: (r.studentNames || '').split(', ').filter(Boolean)
+    }))});
+  } catch (error) {
+    console.error('Teacher list message recipients error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Helper to build a tagged message so we can query teacher-sent items
+const buildTaggedMessage = ({ teacherId, parentId = null, studentId = null, type = 'general', message }) => {
+  const safeType = String(type || 'general').toLowerCase();
+  return `[TEACHER_MSG:${teacherId}:${parentId ?? 'null'}:${studentId ?? 'null'}:${safeType}] ${message}`;
+};
+
+// Parse tagged message header
+const parseTaggedMessage = (text = '') => {
+  const match = text.match(/^\[TEACHER_MSG:(\d+):(\d+|null):(\d+|null):([a-z]+)]\s*(.*)$/i);
+  if (!match) return null;
+  const [, teacherId, parentId, studentId, type, body] = match;
+  return {
+    teacherId: Number(teacherId),
+    parentId: parentId === 'null' ? null : Number(parentId),
+    studentId: studentId === 'null' ? null : Number(studentId),
+    type: (type || 'general').toLowerCase(),
+    body: body || ''
+  };
+};
+
+// List conversation messages for this teacher (outgoing and incoming)
+router.get('/messages', async (req, res) => {
+  try {
+    const teacherUserId = req.user.userId;
+    const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+
+    // Outgoing (teacher -> parent)
+    const [outRows] = await pool.execute(
+      `SELECT NotificationID as id, RecipientID as recipientUserId, DateSent as dateSent, Message as message, Status as status
+       FROM notification
+       WHERE Message LIKE ?
+       ORDER BY DateSent DESC
+       LIMIT ?`,
+      [ `%[TEACHER_MSG:${teacherUserId}:%`, limit ]
+    );
+
+    // Incoming (parent -> teacher) to this teacher user
+    const [inRows] = await pool.execute(
+      `SELECT NotificationID as id, RecipientID as recipientUserId, DateSent as dateSent, Message as message, Status as status
+       FROM notification
+       WHERE RecipientID = ? AND Message LIKE '[PARENT_MSG:%'
+       ORDER BY DateSent DESC
+       LIMIT ?`,
+      [ teacherUserId, limit ]
+    );
+
+    const items = [];
+
+    // Parse teacher -> parent items
+    for (const r of outRows) {
+      const meta = parseTaggedMessage(r.message);
+      let parentName = null;
+      let studentName = null;
+      if (meta?.parentId) {
+        const [p] = await pool.execute(`SELECT FullName FROM parent WHERE ParentID = ?`, [meta.parentId]);
+        if (Array.isArray(p) && p.length > 0) parentName = p[0].FullName;
+      }
+      if (meta?.studentId) {
+        const [s] = await pool.execute(`SELECT FullName FROM studentrecord WHERE StudentID = ?`, [meta.studentId]);
+        if (Array.isArray(s) && s.length > 0) studentName = s[0].FullName;
+      }
+      items.push({
+        id: r.id,
+        direction: 'out',
+        dateSent: r.dateSent,
+        status: r.status?.toLowerCase() === 'read' ? 'read' : 'sent',
+        type: meta?.type || 'general',
+        parentName,
+        studentName,
+        message: meta?.body || r.message
+      });
+    }
+
+    // Parse parent -> teacher items
+    for (const r of inRows) {
+      const match = r.message.match(/^\[PARENT_MSG:(\d+):(\d+|null):(\d+|null):([a-z]+)]\s*(.*)$/i);
+      let parentName = null;
+      let studentName = null;
+      let type = 'general';
+      let body = r.message;
+      if (match) {
+        const [, parentUserIdStr, parentIdStr, studentIdStr, t, b] = match;
+        type = (t || 'general').toLowerCase();
+        body = b || '';
+        if (parentIdStr && parentIdStr !== 'null') {
+          const [p] = await pool.execute(`SELECT FullName FROM parent WHERE ParentID = ?`, [Number(parentIdStr)]);
+          if (Array.isArray(p) && p.length > 0) parentName = p[0].FullName;
+        }
+        if (studentIdStr && studentIdStr !== 'null') {
+          const [s] = await pool.execute(`SELECT FullName FROM studentrecord WHERE StudentID = ?`, [Number(studentIdStr)]);
+          if (Array.isArray(s) && s.length > 0) studentName = s[0].FullName;
+        }
+      }
+      items.push({
+        id: r.id,
+        direction: 'in',
+        dateSent: r.dateSent,
+        status: r.status?.toLowerCase() === 'read' ? 'read' : 'sent',
+        type,
+        parentName,
+        studentName,
+        message: body
+      });
+    }
+
+    // Sort combined list by date desc and cap to limit
+    items.sort((a, b) => new Date(b.dateSent) - new Date(a.dateSent));
+    return res.json({ success: true, data: items.slice(0, limit) });
+  } catch (error) {
+    console.error('Teacher list messages error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Send message to a parent
+router.post('/messages', async (req, res) => {
+  try {
+    const teacherUserId = req.user.userId;
+    const { parentId, parentUserId, studentId, type = 'general', message } = req.body || {};
+
+    if (!message || String(message).trim().length === 0) {
+      return res.status(400).json({ success: false, message: 'Message is required' });
+    }
+
+    // Determine parent and their user id
+    let resolvedParentId = parentId ? Number(parentId) : null;
+    let resolvedParentUserId = parentUserId ? Number(parentUserId) : null;
+
+    if (!resolvedParentId && studentId) {
+      // Resolve parent from student
+      const [rows] = await pool.execute(`SELECT ParentID FROM studentrecord WHERE StudentID = ? LIMIT 1`, [Number(studentId)]);
+      if (!Array.isArray(rows) || rows.length === 0 || !rows[0].ParentID) {
+        return res.status(400).json({ success: false, message: 'Unable to resolve parent for student' });
+      }
+      resolvedParentId = rows[0].ParentID;
+    }
+
+    if (!resolvedParentUserId && resolvedParentId) {
+      const [rows] = await pool.execute(`SELECT UserID FROM parent WHERE ParentID = ? LIMIT 1`, [resolvedParentId]);
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return res.status(400).json({ success: false, message: 'Parent user not found' });
+      }
+      resolvedParentUserId = rows[0].UserID;
+    }
+
+    if (!resolvedParentUserId) {
+      return res.status(400).json({ success: false, message: 'parentId, parentUserId or studentId required' });
+    }
+
+    // Validate teacher teaches this student or has this parent in scope
+    if (studentId) {
+      const [rows] = await pool.execute(
+        `SELECT 1
+         FROM teacherschedule ts
+         JOIN studentschedule ss ON ss.ScheduleID = ts.ScheduleID
+         WHERE ts.TeacherID = ? AND ss.StudentID = ?
+         LIMIT 1`,
+        [teacherUserId, Number(studentId)]
+      );
+      if (rows.length === 0) {
+        return res.status(403).json({ success: false, message: 'You do not teach this student' });
+      }
+    } else if (resolvedParentId) {
+      const [rows] = await pool.execute(
+        `SELECT 1
+         FROM teacherschedule ts
+         JOIN studentschedule ss ON ss.ScheduleID = ts.ScheduleID
+         JOIN studentrecord sr ON sr.StudentID = ss.StudentID
+         WHERE ts.TeacherID = ? AND sr.ParentID = ?
+         LIMIT 1`,
+        [teacherUserId, resolvedParentId]
+      );
+      if (rows.length === 0) {
+        return res.status(403).json({ success: false, message: 'Parent is not within your student roster' });
+      }
+    }
+
+    const tagged = buildTaggedMessage({
+      teacherId: teacherUserId,
+      parentId: resolvedParentId,
+      studentId: studentId ? Number(studentId) : null,
+      type,
+      message: String(message).trim()
+    });
+
+    await pool.execute(
+      `INSERT INTO notification (RecipientID, Message, Status) VALUES (?, ?, 'Unread')`,
+      [resolvedParentUserId, tagged]
+    );
+
+    return res.status(201).json({ success: true, message: 'Message sent' });
+  } catch (error) {
+    console.error('Teacher send message error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // Get detailed student info (personal, parent, section) and attendance for this teacher's schedule
 router.get('/student-details', async (req, res) => {
   try {
@@ -485,10 +720,12 @@ router.get('/student-details', async (req, res) => {
          sec.SectionName as sectionName,
          p.ParentID as parentId,
          p.FullName as parentName,
-         p.ContactInfo as parentContact
+         p.ContactInfo as parentContact,
+         ua.Username as parentEmail
        FROM studentrecord sr
        LEFT JOIN section sec ON sec.SectionID = sr.SectionID
        LEFT JOIN parent p ON p.ParentID = sr.ParentID
+       LEFT JOIN useraccount ua ON ua.UserID = p.UserID
        WHERE sr.StudentID = ?
        LIMIT 1`,
       [studentId]

@@ -77,7 +77,7 @@ export default function StudentDetailsModal({ scheduleId, studentId, onClose }: 
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center gap-2 text-gray-700"><FileText className="h-4 w-4" />{student.parentName || '—'}</div>
                   <div className="flex items-center gap-2 text-gray-700"><Phone className="h-4 w-4" />{student.parentContact || '—'}</div>
-                  <div className="flex items-center gap-2 text-gray-700"><Mail className="h-4 w-4" />{student.parentContact || '—'}</div>
+                  <div className="flex items-center gap-2 text-gray-700"><Mail className="h-4 w-4" />{student.parentEmail || '—'}</div>
                 </div>
               </div>
             </div>

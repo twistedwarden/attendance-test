@@ -272,6 +272,216 @@ router.get('/notifications', authenticateToken, requireRole(['parent']), async (
   }
 });
 
+// ===== TEACHER -> PARENT MESSAGES (via notification table) =====
+
+// List conversation messages (teacher → parent and parent → teacher)
+router.get('/messages', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const userId = req.user.userId; // parent user id
+    const parentId = req.user.parentId; // parent entity id
+    const limit = Math.min(parseInt(req.query.limit || '100', 10), 200);
+
+    // Incoming: teacher -> parent
+    const [incomingRows] = await pool.execute(
+      `SELECT NotificationID as id, RecipientID, DateSent as dateSent, Message as message, Status as status
+       FROM notification
+       WHERE RecipientID = ? AND Message LIKE '[TEACHER_MSG:%'
+       ORDER BY DateSent DESC
+       LIMIT ?`,
+      [userId, limit]
+    );
+
+    // Outgoing: parent -> teacher (find by message tag, recipient varies)
+    const [outgoingRows] = await pool.execute(
+      `SELECT NotificationID as id, RecipientID, DateSent as dateSent, Message as message, Status as status
+       FROM notification
+       WHERE Message LIKE ?
+       ORDER BY DateSent DESC
+       LIMIT ?`,
+      [`[PARENT_MSG:${userId}:%`, limit]
+    );
+
+    // Parse metadata header
+    const parseTaggedMessage = (text = '') => {
+      const match = text.match(/^\[TEACHER_MSG:(\d+):(\d+|null):(\d+|null):([a-z]+)]\s*(.*)$/i);
+      if (!match) return { type: 'general', body: text };
+      const [, teacherId, parentId, studentId, type, body] = match;
+      return {
+        teacherId: Number(teacherId),
+        parentId: parentId === 'null' ? null : Number(parentId),
+        studentId: studentId === 'null' ? null : Number(studentId),
+        type: (type || 'general').toLowerCase(),
+        body: body || ''
+      };
+    };
+
+    const items = [];
+    // Build incoming items (direction: in)
+    for (const r of incomingRows) {
+      const meta = parseTaggedMessage(r.message);
+      let teacherName = null;
+      if (meta?.teacherId) {
+        const [t] = await pool.execute(`SELECT COALESCE(tr.FullName, ua.Username) as name FROM useraccount ua LEFT JOIN teacherrecord tr ON tr.UserID = ua.UserID WHERE ua.UserID = ? LIMIT 1`, [meta.teacherId]);
+        if (Array.isArray(t) && t.length > 0) teacherName = t[0].name;
+      }
+      let studentName = null;
+      if (meta?.studentId) {
+        const [s] = await pool.execute(`SELECT FullName as name FROM studentrecord WHERE StudentID = ? LIMIT 1`, [meta.studentId]);
+        if (Array.isArray(s) && s.length > 0) studentName = s[0].name;
+      }
+      items.push({
+        id: r.id,
+        direction: 'in',
+        dateSent: r.dateSent,
+        status: (r.status || '').toLowerCase() === 'read' ? 'read' : 'unread',
+        type: meta?.type || 'general',
+        teacherName,
+        studentName,
+        message: meta?.body || r.message
+      });
+    }
+
+    // Outgoing items (direction: out)
+    for (const r of outgoingRows) {
+      const match = r.message.match(/^\[PARENT_MSG:(\d+):(\d+|null):(\d+|null):([a-z]+)]\s*(.*)$/i);
+      let teacherName = null;
+      let studentName = null;
+      let type = 'general';
+      let body = r.message;
+      if (match) {
+        const [, parentUserIdStr, parentIdStr, studentIdStr, t, b] = match;
+        type = (t || 'general').toLowerCase();
+        body = b || '';
+        if (studentIdStr && studentIdStr !== 'null') {
+          const [s] = await pool.execute(`SELECT FullName as name FROM studentrecord WHERE StudentID = ? LIMIT 1`, [Number(studentIdStr)]);
+          if (Array.isArray(s) && s.length > 0) studentName = s[0].name;
+        }
+      }
+      // Resolve teacher name from RecipientID (teacher user id)
+      const [t] = await pool.execute(`SELECT COALESCE(tr.FullName, ua.Username) as name FROM useraccount ua LEFT JOIN teacherrecord tr ON tr.UserID = ua.UserID WHERE ua.UserID = ? LIMIT 1`, [r.RecipientID]);
+      if (Array.isArray(t) && t.length > 0) teacherName = t[0].name;
+
+      items.push({
+        id: r.id,
+        direction: 'out',
+        dateSent: r.dateSent,
+        status: 'sent',
+        type,
+        teacherName,
+        studentName,
+        message: body
+      });
+    }
+
+    // Sort by date desc and limit
+    items.sort((a, b) => new Date(b.dateSent) - new Date(a.dateSent));
+    return res.json({ success: true, data: items.slice(0, limit) });
+  } catch (error) {
+    console.error('Parent get messages error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Mark a teacher message as read
+router.post('/messages/:notificationId/read', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = req.user.userId;
+
+    // Ensure this notification belongs to the parent user
+    const [rows] = await pool.execute(
+      `SELECT NotificationID FROM notification WHERE NotificationID = ? AND RecipientID = ? LIMIT 1`,
+      [notificationId, userId]
+    );
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Message not found' });
+    }
+
+    await pool.execute(`UPDATE notification SET Status = 'Read' WHERE NotificationID = ?`, [notificationId]);
+    return res.json({ success: true, message: 'Message marked as read' });
+  } catch (error) {
+    console.error('Parent mark message read error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// List teacher recipients this parent can message (teachers who teach their children)
+router.get('/messages/recipients', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const parentId = req.user.parentId;
+    if (!parentId) {
+      return res.status(404).json({ success: false, message: 'Parent profile not found' });
+    }
+
+    const [rows] = await pool.execute(
+      `SELECT DISTINCT 
+         ts.TeacherID as teacherUserId,
+         COALESCE(tr.FullName, ua.Username) as teacherName,
+         s.StudentID as studentId,
+         s.FullName as studentName
+       FROM studentrecord s
+       JOIN studentschedule ss ON ss.StudentID = s.StudentID
+       JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+       LEFT JOIN teacherrecord tr ON tr.UserID = ts.TeacherID
+       LEFT JOIN useraccount ua ON ua.UserID = ts.TeacherID
+       WHERE s.ParentID = ?
+       ORDER BY teacherName, studentName`,
+      [parentId]
+    );
+
+    // Group by teacher
+    const map = new Map();
+    for (const r of rows) {
+      const key = r.teacherUserId;
+      if (!map.has(key)) {
+        map.set(key, { teacherUserId: r.teacherUserId, teacherName: r.teacherName, students: [] });
+      }
+      map.get(key).students.push({ studentId: r.studentId, studentName: r.studentName });
+    }
+    return res.json({ success: true, data: Array.from(map.values()) });
+  } catch (error) {
+    console.error('Parent list teacher recipients error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Parent sends message to a teacher (stored in notification to teacher user)
+router.post('/messages', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const parentUserId = req.user.userId;
+    const parentId = req.user.parentId;
+    const { teacherUserId, studentId, type = 'general', message } = req.body || {};
+
+    if (!teacherUserId || !message || String(message).trim().length === 0) {
+      return res.status(400).json({ success: false, message: 'teacherUserId and message are required' });
+    }
+
+    // Validate that this teacher teaches this parent's child (optionally specific student)
+    let sql = `SELECT 1 FROM studentrecord s JOIN studentschedule ss ON ss.StudentID = s.StudentID JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID WHERE s.ParentID = ? AND ts.TeacherID = ?`;
+    const params = [parentId, Number(teacherUserId)];
+    if (studentId) {
+      sql += ' AND s.StudentID = ?';
+      params.push(Number(studentId));
+    }
+    sql += ' LIMIT 1';
+    const [rows] = await pool.execute(sql, params);
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(403).json({ success: false, message: 'You do not have permission to message this teacher' });
+    }
+
+    // Tag parent message for teacher to parse later
+    const tagged = `[PARENT_MSG:${parentUserId}:${parentId ?? 'null'}:${studentId ?? 'null'}:${String(type).toLowerCase()}] ${String(message).trim()}`;
+    await pool.execute(
+      `INSERT INTO notification (RecipientID, Message, Status) VALUES (?, ?, 'Unread')`,
+      [Number(teacherUserId), tagged]
+    );
+    return res.status(201).json({ success: true, message: 'Message sent' });
+  } catch (error) {
+    console.error('Parent send message error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // Mark notification as read
 router.post('/notifications/:reviewId/read', authenticateToken, requireRole(['parent']), async (req, res) => {
   try {

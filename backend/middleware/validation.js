@@ -19,7 +19,8 @@ export const validateLogin = [
   body('email')
     .isEmail()
     .withMessage('Please provide a valid email address')
-    .normalizeEmail(),
+    // Preserve dots and subaddresses so stored usernames/emails match exactly
+    .normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false, outlookdotcom_remove_subaddress: false, yahoo_remove_subaddress: false, icloud_remove_subaddress: false }),
   body('password')
     .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters long'),
@@ -44,7 +45,7 @@ export const validateUserCreation = [
   body('email')
     .isEmail()
     .withMessage('Please provide a valid email address')
-    .normalizeEmail(),
+    .normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false, outlookdotcom_remove_subaddress: false, yahoo_remove_subaddress: false, icloud_remove_subaddress: false }),
   body('password')
     .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters long'),
@@ -69,7 +70,7 @@ export const validateUserUpdate = [
     .optional()
     .isEmail()
     .withMessage('Please provide a valid email address')
-    .normalizeEmail(),
+    .normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false, outlookdotcom_remove_subaddress: false, yahoo_remove_subaddress: false, icloud_remove_subaddress: false }),
   body('role')
     .optional()
     .isIn(['admin', 'teacher', 'parent'])

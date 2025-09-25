@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Edit, Save, X, User } from 'lucide-react';
+import { Search, Filter, Edit, Save, X, User, Eye } from 'lucide-react';
 import { RegistrarService } from './api/registrarService';
 
 interface Student {
@@ -14,6 +14,7 @@ interface Student {
   section: string;
   parentName: string;
   parentContact: string;
+  parentEmail?: string;
   enrollmentStatus: 'pending' | 'approved' | 'declined' | 'enrolled';
   enrollmentDate: string;
   lastModified: string;
@@ -46,6 +47,7 @@ export default function StudentManagement() {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [editForm, setEditForm] = useState<Partial<Student>>({});
   const [saveLoading, setSaveLoading] = useState(false);
+  const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
 
   useEffect(() => {
     loadStudents();
@@ -274,12 +276,22 @@ export default function StudentManagement() {
                         {new Date(student.lastModified).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <button
-                          onClick={() => handleEdit(student)}
-                          className="text-blue-600 hover:text-blue-900"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => setViewingStudent(student)}
+                            className="text-gray-600 hover:text-gray-900"
+                            title="View Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleEdit(student)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Edit"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -311,6 +323,13 @@ export default function StudentManagement() {
                       <div className="text-xs text-gray-500">
                         {new Date(student.lastModified).toLocaleDateString()}
                       </div>
+                      <button
+                        onClick={() => setViewingStudent(student)}
+                        className="text-gray-600 hover:text-gray-900 p-1"
+                        title="View Details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => handleEdit(student)}
                         className="text-blue-600 hover:text-blue-900 p-1"
@@ -482,6 +501,91 @@ export default function StudentManagement() {
                       Save Changes
                     </>
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Modal */}
+      {viewingStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 sm:p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold">Student Details</h3>
+                <button
+                  onClick={() => setViewingStudent(null)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="text-gray-500">Full Name</div>
+                  <div className="font-medium text-gray-900">{viewingStudent.studentName}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Date of Birth</div>
+                  <div className="font-medium text-gray-900">{formatDateMDY(viewingStudent.dateOfBirth)}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Gender</div>
+                  <div className="font-medium text-gray-900">{viewingStudent.gender}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Place of Birth</div>
+                  <div className="font-medium text-gray-900">{viewingStudent.placeOfBirth}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Nationality</div>
+                  <div className="font-medium text-gray-900">{viewingStudent.nationality}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Grade & Section</div>
+                  <div className="font-medium text-gray-900">Grade {viewingStudent.gradeLevel} • {viewingStudent.section || 'Not assigned'}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Parent</div>
+                  <div className="font-medium text-gray-900">{viewingStudent.parentName}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Parent Contact</div>
+                  <div className="font-medium text-gray-900">{viewingStudent.parentContact}</div>
+                </div>
+                {viewingStudent.parentEmail && (
+                  <div className="sm:col-span-2">
+                    <div className="text-gray-500">Parent Email</div>
+                    <div className="font-medium text-gray-900">{viewingStudent.parentEmail}</div>
+                  </div>
+                )}
+                <div className="sm:col-span-2">
+                  <div className="text-gray-500">Address</div>
+                  <div className="font-medium text-gray-900">{viewingStudent.address}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Enrollment Status</div>
+                  <div>{getStatusBadge(viewingStudent.enrollmentStatus)}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Enrollment Date</div>
+                  <div className="font-medium text-gray-900">{formatDateMDY(viewingStudent.enrollmentDate)}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Last Modified</div>
+                  <div className="font-medium text-gray-900">{new Date(viewingStudent.lastModified).toLocaleDateString()}</div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setViewingStudent(null)}
+                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Close
                 </button>
               </div>
             </div>

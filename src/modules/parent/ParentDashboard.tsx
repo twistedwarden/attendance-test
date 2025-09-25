@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import CompactLayout from './components/CompactLayout';
 import CompactDashboard from './pages/CompactDashboard';
+import MessagesPage from './pages/Messages';
 import ModernDashboard from './pages/ModernDashboard';
 import CompactProfile from './pages/CompactProfile';
 import CompactAttendance from './pages/CompactAttendance';
@@ -19,6 +20,7 @@ const ParentDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showEnrollmentModal, setShowEnrollmentModal] = useState(false);
+  const [enrollmentEnabled, setEnrollmentEnabled] = useState<boolean>(true);
 
   useEffect(() => {
     loadParentData();
@@ -29,14 +31,16 @@ const ParentDashboard = () => {
       setIsLoading(true);
       setError(null);
       
-      // Load parent profile and students in parallel
-      const [parentData, studentsData] = await Promise.all([
+      // Load parent profile, students, and enrollment toggle in parallel
+      const [parentData, studentsData, enabled] = await Promise.all([
         ParentService.getParentProfile(),
-        ParentService.getParentStudents()
+        ParentService.getParentStudents(),
+        ParentService.getEnrollmentEnabled().catch(() => true)
       ]);
       
       setParent(parentData);
       setStudents(studentsData);
+      setEnrollmentEnabled(Boolean(enabled));
       
       // Set first student as selected if available
       if (studentsData.length > 0) {
@@ -61,6 +65,7 @@ const ParentDashboard = () => {
   };
 
   const handleEnrollNewStudent = () => {
+    if (!enrollmentEnabled) return;
     setShowEnrollmentModal(true);
   };
 
@@ -102,7 +107,7 @@ const ParentDashboard = () => {
 
   // Show no students message if no students are linked
   if (students.length === 0) {
-    return <NoStudentsMessage onStudentEnrolled={handleStudentEnrolled} />;
+    return <NoStudentsMessage onStudentEnrolled={handleStudentEnrolled} enrollmentEnabled={enrollmentEnabled} />;
   }
 
   return (
@@ -117,6 +122,7 @@ const ParentDashboard = () => {
               students={students}
               parent={parent}
               onEnrollNewStudent={handleEnrollNewStudent}
+              enrollmentEnabled={enrollmentEnabled}
             />
           }
         >
@@ -144,6 +150,14 @@ const ParentDashboard = () => {
             element={
               <div className="flex-1 w-full h-full overflow-auto">
                 {selectedStudent && <CompactAttendance selectedDaughter={selectedStudent} />}
+              </div>
+            } 
+          />
+          <Route 
+            path="messages" 
+            element={
+              <div className="flex-1 w-full h-full overflow-auto">
+                <MessagesPage />
               </div>
             } 
           />

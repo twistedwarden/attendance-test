@@ -16,13 +16,17 @@ export default function AuditTrailSection() {
   const [items, setItems] = useState<AuditRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
 
-  const load = async () => {
+  const load = async (nextPage = page) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await AdminService.listAuditTrail(100, 0);
+      const offset = (nextPage - 1) * limit;
+      const data = await AdminService.listAuditTrail(limit, offset);
       setItems(data);
+      setPage(nextPage);
     } catch (e: any) {
       setError(e?.message || 'Failed to load audit trail');
     } finally {
@@ -59,11 +63,47 @@ export default function AuditTrailSection() {
   };
 
   const handleExportAuditLog = () => {
-    console.log('Exporting audit log...');
+    // Export current filtered view to CSV client-side
+    const headers = ['Timestamp','UserID','Action','Table','Record'];
+    const rows = filtered.map(e => [
+      new Date(e.ActionDateTime).toLocaleString(),
+      String(e.UserID ?? ''),
+      (e.Action ?? '').replace(/\n/g,' '),
+      String(e.TableAffected ?? ''),
+      String(e.RecordID ?? '')
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-trail-page-${page}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
-  const handlePurgeOldLogs = () => {
-    console.log('Purging old logs...');
+  const handlePurgeOldLogs = async () => {
+    try {
+      if (!window.confirm('Purge audit logs older than 90 days? This cannot be undone.')) return;
+      setLoading(true);
+      setError(null);
+      await AdminService.purgeAuditTrail(90);
+      await load(1);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to purge audit logs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePrev = () => {
+    if (page > 1) load(page - 1);
+  };
+  const handleNext = () => {
+    // Without total count, allow next and rely on empty result to disable next
+    load(page + 1);
   };
 
   return (
@@ -107,8 +147,13 @@ export default function AuditTrailSection() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Audit Entries ({filtered.length})</h3>
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900">Audit Entries (showing {filtered.length} items)</h3>
+          <div className="flex items-center gap-2">
+            <button onClick={handlePrev} disabled={page === 1} className={`px-3 py-1 rounded border ${page === 1 ? 'text-gray-400 border-gray-200' : 'text-gray-700 hover:bg-gray-50 border-gray-300'}`}>Prev</button>
+            <span className="text-sm text-gray-600">Page {page}</span>
+            <button onClick={handleNext} disabled={!items || items.length < limit} className={`px-3 py-1 rounded border ${(!items || items.length < limit) ? 'text-gray-400 border-gray-200' : 'text-gray-700 hover:bg-gray-50 border-gray-300'}`}>Next</button>
+          </div>
         </div>
         {error && <div className="p-4 text-red-600">{error}</div>}
         {loading ? (

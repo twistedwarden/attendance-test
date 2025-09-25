@@ -35,16 +35,28 @@ export default function StudentsSection() {
   const [editOpen, setEditOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [viewing, setViewing] = useState<StudentVM | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
+  const [viewDetails, setViewDetails] = useState<any | null>(null);
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
   const [selectedStudentForAttendance, setSelectedStudentForAttendance] = useState<StudentVM | null>(null);
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
   const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
-  const [formName, setFormName] = useState('');
+  // Name (split)
+  const [formFirstName, setFormFirstName] = useState('');
+  const [formMiddleName, setFormMiddleName] = useState('');
+  const [formLastName, setFormLastName] = useState('');
   const [formGrade, setFormGrade] = useState('');
   const [formSection, setFormSection] = useState('');
+  const [formSectionId, setFormSectionId] = useState<number | null>(null);
+  // Enrollment details
+  const [formDateOfBirth, setFormDateOfBirth] = useState('');
+  const [formGender, setFormGender] = useState('');
+  const [formPlaceOfBirth, setFormPlaceOfBirth] = useState('');
+  const [formNationality, setFormNationality] = useState('');
+  const [formAddress, setFormAddress] = useState('');
+  const [formAdditionalInfo, setFormAdditionalInfo] = useState('');
   const [editing, setEditing] = useState<StudentVM | null>(null);
-  const [formParentContact, setFormParentContact] = useState('');
   const [parentMode, setParentMode] = useState<'none'|'existing'|'new'>('none');
   const [parentQuery, setParentQuery] = useState('');
   const [parentResults, setParentResults] = useState<any[]>([]);
@@ -52,10 +64,17 @@ export default function StudentsSection() {
   const [newParentName, setNewParentName] = useState('');
   const [newParentEmail, setNewParentEmail] = useState('');
   const [newParentPassword, setNewParentPassword] = useState('');
+  const [newParentContact, setNewParentContact] = useState('');
+  const [newParentRelationship, setNewParentRelationship] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   
   // Suggestions state
   const [availableSections, setAvailableSections] = useState<string[]>([]);
+  const [sectionOptionsFull, setSectionOptionsFull] = useState<Array<{ id: number; sectionName: string; gradeLevel?: string }>>([]);
+  const filteredSectionOptions = useMemo(() => {
+    if (!formGrade) return sectionOptionsFull;
+    return sectionOptionsFull.filter(opt => (opt.gradeLevel ?? '') === formGrade);
+  }, [sectionOptionsFull, formGrade]);
   const [availableGrades, setAvailableGrades] = useState<string[]>([]);
   
   // Archiving states
@@ -99,7 +118,12 @@ export default function StudentsSection() {
     try {
       // Load sections
       const sections = await AdminService.listSections();
-      const sectionNames = [...new Set(sections.map(section => section.sectionName).filter(Boolean))];
+      setSectionOptionsFull(
+        (sections || [])
+          .map((s: any) => ({ id: s.id ?? s.SectionID, sectionName: s.sectionName ?? s.SectionName, gradeLevel: s.gradeLevel ?? s.GradeLevel }))
+          .filter((s: any) => s.id && s.sectionName)
+      );
+      const sectionNames = [...new Set(sections.map((section: any) => section.sectionName ?? section.SectionName).filter(Boolean))];
       setAvailableSections(sectionNames);
       
       // Load grades (extract unique grades from sections)
@@ -114,6 +138,13 @@ export default function StudentsSection() {
     load(); 
     loadSuggestions();
   }, []);
+
+  // Clear section if grade changes to a non-matching set
+  useEffect(() => {
+    if (!formSectionId) return;
+    const valid = sectionOptionsFull.some(opt => opt.id === formSectionId && ((opt.gradeLevel ?? '') === formGrade || !formGrade));
+    if (!valid) setFormSectionId(null);
+  }, [formGrade, sectionOptionsFull]);
 
   const filtered = useMemo(() => {
     return students.filter(s => {
@@ -150,20 +181,41 @@ export default function StudentsSection() {
   };
 
   const openCreate = () => {
-    setFormName('');
+    setFormFirstName('');
+    setFormMiddleName('');
+    setFormLastName('');
     setFormGrade('');
     setFormSection('');
-    setFormParentContact('');
+    setFormSectionId(null);
+    setFormDateOfBirth('');
+    setFormGender('');
+    setFormPlaceOfBirth('');
+    setFormNationality('');
+    setFormAddress('');
+    setFormAdditionalInfo('');
     setParentMode('none');
     setParentQuery(''); setParentResults([]); setSelectedParentId(null);
     setNewParentName(''); setNewParentEmail(''); setNewParentPassword('');
+    setNewParentContact(''); setNewParentRelationship('');
     setCreateOpen(true);
   };
 
   const submitCreate = async () => {
     try {
-      if (!formName.trim()) return;
-      await AdminService.createStudent({ name: formName.trim(), gradeLevel: formGrade || null, section: formSection || null, parentContact: formParentContact || null, parentId: selectedParentId ?? undefined });
+      const name = `${formFirstName} ${formMiddleName} ${formLastName}`.replace(/\s+/g, ' ').trim();
+      if (!name) return;
+      await AdminService.createStudent({ 
+        name, 
+        gradeLevel: formGrade || null, 
+        sectionId: formSectionId && formSectionId > 0 ? formSectionId : null, 
+        parentId: selectedParentId && selectedParentId > 0 ? selectedParentId : null,
+        dateOfBirth: formDateOfBirth || null,
+        gender: formGender || null,
+        placeOfBirth: formPlaceOfBirth || null,
+        nationality: formNationality || null,
+        address: formAddress || null,
+        additionalInfo: formAdditionalInfo || null
+      });
       setCreateOpen(false);
       toast.success('Student created');
       load();
@@ -175,10 +227,20 @@ export default function StudentsSection() {
 
   const openEdit = (s: StudentVM) => {
     setEditing(s);
-    setFormName(s.name);
+    // We don't have parts; split best-effort
+    const parts = (s.name || '').split(' ');
+    setFormFirstName(parts[0] || '');
+    setFormMiddleName(parts.length > 2 ? parts.slice(1, parts.length - 1).join(' ') : '');
+    setFormLastName(parts.length > 1 ? parts[parts.length - 1] : '');
     setFormGrade(s.gradeLevel || '');
     setFormSection(s.section || '');
-    setFormParentContact(s.parentContact || '');
+    setFormSectionId(s.sectionId ?? null);
+    setFormDateOfBirth('');
+    setFormGender('');
+    setFormPlaceOfBirth('');
+    setFormNationality('');
+    setFormAddress('');
+    setFormAdditionalInfo('');
     setParentMode('none'); setSelectedParentId(null); setParentQuery(''); setParentResults([]);
     setCreateOpen(false);
     setEditOpen(true);
@@ -213,7 +275,19 @@ export default function StudentsSection() {
   const submitEdit = async () => {
     if (!editing) return;
     try {
-      await AdminService.updateStudent(editing.id, { name: formName.trim(), gradeLevel: formGrade || null, section: formSection || null, parentContact: formParentContact || null, parentId: selectedParentId ?? undefined });
+      const name = `${formFirstName} ${formMiddleName} ${formLastName}`.replace(/\s+/g, ' ').trim();
+      await AdminService.updateStudent(editing.id, { 
+        name, 
+        gradeLevel: formGrade || null, 
+        sectionId: formSectionId && formSectionId > 0 ? formSectionId : null, 
+        parentId: selectedParentId && selectedParentId > 0 ? selectedParentId : null,
+        dateOfBirth: formDateOfBirth || null,
+        gender: formGender || null,
+        placeOfBirth: formPlaceOfBirth || null,
+        nationality: formNationality || null,
+        address: formAddress || null,
+        additionalInfo: formAdditionalInfo || null
+      });
       setEditOpen(false);
       setEditing(null);
       toast.success('Student updated');
@@ -240,6 +314,28 @@ export default function StudentsSection() {
       console.error(e);
     }
   };
+
+  // Load detailed info for view modal
+  const loadViewDetails = async (studentId: number) => {
+    try {
+      setViewLoading(true);
+      setViewDetails(null);
+      const details = await AdminService.getEnrollment(studentId);
+      setViewDetails(details);
+    } catch (e) {
+      console.error('Failed to load student details:', e);
+      toast.error('Failed to load student details');
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  // When opening view modal, fetch details
+  useEffect(() => {
+    if (viewOpen && viewing?.id) {
+      loadViewDetails(viewing.id);
+    }
+  }, [viewOpen, viewing?.id]);
 
   // Archiving functions
   const openArchive = (student: StudentVM) => {
@@ -529,14 +625,56 @@ export default function StudentsSection() {
         footer={(
           <>
             <button onClick={() => setCreateOpen(false)} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700">Cancel</button>
-            <button onClick={submitCreate} className="px-4 py-2 rounded-lg bg-blue-600 text-white">Save</button>
+            <button 
+              disabled={parentMode === 'new' && !selectedParentId}
+              onClick={submitCreate} 
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            >Save</button>
           </>
         )}
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-            <input value={formName} onChange={(e) => setFormName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <input placeholder="First name" value={formFirstName} onChange={(e) => setFormFirstName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input placeholder="Middle name" value={formMiddleName} onChange={(e) => setFormMiddleName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input placeholder="Last name" value={formLastName} onChange={(e) => setFormLastName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+              <input type="date" value={formDateOfBirth} onChange={(e) => setFormDateOfBirth(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+              <select value={formGender} onChange={(e) => setFormGender(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Place of Birth</label>
+              <input value={formPlaceOfBirth} onChange={(e) => setFormPlaceOfBirth(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nationality</label>
+              <input value={formNationality} onChange={(e) => setFormNationality(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+            <textarea value={formAddress} onChange={(e) => setFormAddress(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" rows={2} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Additional Info</label>
+            <textarea value={formAdditionalInfo} onChange={(e) => setFormAdditionalInfo(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" rows={2} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -549,19 +687,20 @@ export default function StudentsSection() {
               />
             </div>
             <div>
-              <SuggestionInput
-                label="Section"
-                value={formSection}
-                onChange={setFormSection}
-                suggestions={availableSections}
-                placeholder="Enter section (e.g., A, B, C)"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
+              <select
+                value={formSectionId ?? 0}
+                onChange={(e) => setFormSectionId(Number(e.target.value) || null)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value={0}>Select Section</option>
+                {filteredSectionOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>{opt.sectionName}{opt.gradeLevel ? ` - ${opt.gradeLevel}` : ''}</option>
+                ))}
+              </select>
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Parent Contact</label>
-            <input value={formParentContact} onChange={(e) => setFormParentContact(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-          </div>
+          {/* Removed Parent Contact per requirement */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Link to Parent</label>
             <div className="flex items-center space-x-3">
@@ -590,6 +729,19 @@ export default function StudentsSection() {
                   <input value={newParentName} onChange={(e) => setNewParentName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded" />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Info</label>
+                  <input value={newParentContact} onChange={(e) => setNewParentContact(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Relationship</label>
+                  <select value={newParentRelationship} onChange={(e) => setNewParentRelationship(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded">
+                    <option value="">Select Relationship</option>
+                    <option value="father">Father</option>
+                    <option value="mother">Mother</option>
+                    <option value="guardian">Guardian</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Parent Email</label>
                   <input value={newParentEmail} onChange={(e) => setNewParentEmail(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded" />
                 </div>
@@ -600,9 +752,17 @@ export default function StudentsSection() {
                 <div className="sm:col-span-2">
                   <button
                     onClick={async () => {
-                      if (!newParentName || !newParentEmail || !newParentPassword) return;
-                      const info = await AdminService.createParentFull({ fullName: newParentName, contactInfo: formParentContact || null, email: newParentEmail, password: newParentPassword });
-                      setSelectedParentId(info.parentId);
+                      try {
+                        if (!newParentName || !newParentEmail || !newParentPassword) {
+                          toast.error('Please enter name, email, and password');
+                          return;
+                        }
+                        const info = await AdminService.createParentFull({ fullName: newParentName, contactInfo: newParentContact || null, relationship: newParentRelationship || null, email: newParentEmail, password: newParentPassword });
+                        setSelectedParentId(info.parentId);
+                        toast.success('Parent created and linked');
+                      } catch (e: any) {
+                        toast.error(e?.message || 'Failed to create parent');
+                      }
                     }}
                     className="px-3 py-2 rounded bg-blue-600 text-white"
                   >Create Parent</button>
@@ -621,14 +781,37 @@ export default function StudentsSection() {
         footer={(
           <>
             <button onClick={() => setEditOpen(false)} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700">Cancel</button>
-            <button onClick={submitEdit} className="px-4 py-2 rounded-lg bg-blue-600 text-white">Update</button>
+            <button 
+              disabled={parentMode === 'new' && !selectedParentId}
+              onClick={submitEdit} 
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            >Update</button>
           </>
         )}
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-            <input value={formName} onChange={(e) => setFormName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <input placeholder="First name" value={formFirstName} onChange={(e) => setFormFirstName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input placeholder="Middle name" value={formMiddleName} onChange={(e) => setFormMiddleName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <input placeholder="Last name" value={formLastName} onChange={(e) => setFormLastName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+              <input type="date" value={formDateOfBirth} onChange={(e) => setFormDateOfBirth(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+              <select value={formGender} onChange={(e) => setFormGender(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -641,18 +824,37 @@ export default function StudentsSection() {
               />
             </div>
             <div>
-              <SuggestionInput
-                label="Section"
-                value={formSection}
-                onChange={setFormSection}
-                suggestions={availableSections}
-                placeholder="Enter section (e.g., A, B, C)"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
+              <select
+                value={formSectionId ?? 0}
+                onChange={(e) => setFormSectionId(Number(e.target.value) || null)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value={0}>Select Section</option>
+                {sectionOptionsFull.map((opt) => (
+                  <option key={opt.id} value={opt.id}>{opt.sectionName}{opt.gradeLevel ? ` - ${opt.gradeLevel}` : ''}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {/* Removed Parent Contact per requirement */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Place of Birth</label>
+              <input value={formPlaceOfBirth} onChange={(e) => setFormPlaceOfBirth(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus-border-transparent" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nationality</label>
+              <input value={formNationality} onChange={(e) => setFormNationality(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus-border-transparent" />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Parent Contact</label>
-            <input value={formParentContact} onChange={(e) => setFormParentContact(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+            <textarea value={formAddress} onChange={(e) => setFormAddress(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus-border-transparent" rows={2} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Additional Info</label>
+            <textarea value={formAdditionalInfo} onChange={(e) => setFormAdditionalInfo(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus-border-transparent" rows={2} />
           </div>
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Link to Parent</label>
@@ -682,6 +884,19 @@ export default function StudentsSection() {
                   <input value={newParentName} onChange={(e) => setNewParentName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded" />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Info</label>
+                  <input value={newParentContact} onChange={(e) => setNewParentContact(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Relationship</label>
+                  <select value={newParentRelationship} onChange={(e) => setNewParentRelationship(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded">
+                    <option value="">Select Relationship</option>
+                    <option value="father">Father</option>
+                    <option value="mother">Mother</option>
+                    <option value="guardian">Guardian</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Parent Email</label>
                   <input value={newParentEmail} onChange={(e) => setNewParentEmail(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded" />
                 </div>
@@ -692,9 +907,17 @@ export default function StudentsSection() {
                 <div className="sm:col-span-2">
                   <button
                     onClick={async () => {
-                      if (!newParentName || !newParentEmail || !newParentPassword) return;
-                      const info = await AdminService.createParentFull({ fullName: newParentName, contactInfo: formParentContact || null, email: newParentEmail, password: newParentPassword });
-                      setSelectedParentId(info.parentId);
+                      try {
+                        if (!newParentName || !newParentEmail || !newParentPassword) {
+                          toast.error('Please enter name, email, and password');
+                          return;
+                        }
+                        const info = await AdminService.createParentFull({ fullName: newParentName, contactInfo: newParentContact || null, relationship: newParentRelationship || null, email: newParentEmail, password: newParentPassword });
+                        setSelectedParentId(info.parentId);
+                        toast.success('Parent created and linked');
+                      } catch (e: any) {
+                        toast.error(e?.message || 'Failed to create parent');
+                      }
                     }}
                     className="px-3 py-2 rounded bg-blue-600 text-white"
                   >Create Parent</button>
@@ -718,39 +941,99 @@ export default function StudentsSection() {
       >
         {viewing && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <div className="text-xs text-gray-500">Student ID</div>
-                <div className="text-sm font-medium text-gray-900">{viewing?.id}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Full Name</div>
-                <div className="text-sm font-medium text-gray-900">{viewing?.name}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Grade Level</div>
-                <div className="text-sm font-medium text-gray-900">{viewing?.gradeLevel || '-'}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Section</div>
-                <div className="text-sm font-medium text-gray-900">{viewing?.sectionName || viewing?.section || '-'}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Parent</div>
-                <div className="text-sm font-medium text-gray-900">{viewing?.parentName || '-'}</div>
-              </div>
-              <div className="sm:col-span-2">
-                <div className="text-xs text-gray-500">Parent Contact</div>
-                <div className="text-sm font-medium text-gray-900">{viewing?.parentContact || '-'}</div>
-              </div>
-              <div className="sm:col-span-2">
-                <div className="text-xs text-gray-500">Fingerprint Template</div>
-                <div className="flex items-center space-x-2 text-sm font-medium text-gray-900">
-                  <Fingerprint className={`h-4 w-4 ${viewing?.hasFingerprint ? 'text-green-600' : 'text-gray-400'}`} />
-                  <span>{viewing?.hasFingerprint ? 'Available' : 'Not captured'}</span>
+            {viewLoading && (
+              <div className="flex items-center justify-center py-6 text-gray-600">Loading details...</div>
+            )}
+
+            {!viewLoading && (
+              <>
+                {/* Basic Info */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs text-gray-500">Student ID</div>
+                    <div className="text-sm font-medium text-gray-900">{viewing?.id}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">Full Name</div>
+                    <div className="text-sm font-medium text-gray-900">{viewing?.name}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">Grade Level</div>
+                    <div className="text-sm font-medium text-gray-900">{viewing?.gradeLevel || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">Section</div>
+                    <div className="text-sm font-medium text-gray-900">{viewing?.sectionName || viewing?.section || '-'}</div>
+                  </div>
                 </div>
-              </div>
-            </div>
+
+                {/* Personal Details */}
+                <div className="mt-2">
+                  <div className="text-xs font-semibold text-gray-700 mb-2">Personal Details</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500">Date of Birth</div>
+                      <div className="text-sm font-medium text-gray-900">{viewDetails?.dateOfBirth ? new Date(viewDetails.dateOfBirth).toLocaleDateString() : '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Gender</div>
+                      <div className="text-sm font-medium text-gray-900">{viewDetails?.gender || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Place of Birth</div>
+                      <div className="text-sm font-medium text-gray-900">{viewDetails?.placeOfBirth || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Nationality</div>
+                      <div className="text-sm font-medium text-gray-900">{viewDetails?.nationality || '-'}</div>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-gray-500">Address</div>
+                      <div className="text-sm font-medium text-gray-900">{viewDetails?.address || '-'}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Parent Details */}
+                <div className="mt-2">
+                  <div className="text-xs font-semibold text-gray-700 mb-2">Parent Details</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500">Name</div>
+                      <div className="text-sm font-medium text-gray-900">{viewDetails?.parentName || viewing?.parentName || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Contact</div>
+                      <div className="text-sm font-medium text-gray-900">{viewDetails?.parentContact || viewing?.parentContact || '-'}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Enrollment Details (if available) */}
+                <div className="mt-2">
+                  <div className="text-xs font-semibold text-gray-700 mb-2">Enrollment</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-gray-500">Status</div>
+                      <div className="text-sm font-medium text-gray-900">{viewDetails?.enrollmentStatus || viewing?.status || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Enrollment Date</div>
+                      <div className="text-sm font-medium text-gray-900">{viewDetails?.enrollmentDate ? new Date(viewDetails.enrollmentDate).toLocaleDateString() : '-'}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fingerprint */}
+                <div className="sm:col-span-2 mt-2">
+                  <div className="text-xs text-gray-500">Fingerprint Template</div>
+                  <div className="flex items-center space-x-2 text-sm font-medium text-gray-900">
+                    <Fingerprint className={`h-4 w-4 ${viewing?.hasFingerprint ? 'text-green-600' : 'text-gray-400'}`} />
+                    <span>{viewing?.hasFingerprint ? 'Available' : 'Not captured'}</span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
       </Modal>

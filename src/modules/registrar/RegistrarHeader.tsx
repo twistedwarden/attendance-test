@@ -63,10 +63,11 @@ export default function RegistrarHeader({ onMobileMenuToggle }: RegistrarHeaderP
             
             <button
               onClick={handleLogoutClick}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center space-x-2"
               title="Logout"
             >
-              <LogOut className="w-4 h-4 text-gray-600" />
+              <LogOut className="w-4 h-4 text-gray-600" /> 
+              <span className="text-sm font-medium">Logout</span>
             </button>
           </div>
         </div>

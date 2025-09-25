@@ -272,6 +272,11 @@ export class AuthService {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || 'Failed to complete registration');
+    // If backend returns token and user, store them for auto-login
+    if (data.success && data.data) {
+      if (data.data.token) localStorage.setItem('auth_token', data.data.token);
+      if (data.data.user) localStorage.setItem('user_data', JSON.stringify(data.data.user));
+    }
     return !!data.success;
   }
 } 

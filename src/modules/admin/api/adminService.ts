@@ -91,26 +91,28 @@ export const AdminService = {
 		return data.data || [];
 	},
 
-	async createStudent(payload: { name: string; gradeLevel?: string | null; section?: string | null; parentId?: number | null; parentContact?: string | null; }) {
+	async createStudent(payload: { name: string; gradeLevel?: string | null; sectionId?: number | null; parentId?: number | null; dateOfBirth?: string | null; gender?: string | null; placeOfBirth?: string | null; nationality?: string | null; address?: string | null; additionalInfo?: string | null; }) {
 		const token = getToken();
 		if (!token) throw new Error('Not authenticated');
+		const body = Object.fromEntries(Object.entries(payload as any).map(([k, v]) => [k, v === undefined ? null : v]));
 		const res = await fetch(`${API_BASE_URL}/admin/students`, {
 			method: 'POST',
 			headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-			body: JSON.stringify(payload)
+			body: JSON.stringify(body)
 		});
 		const data = await res.json();
 		if (!res.ok) throw new Error(data.message || 'Failed to create student');
 		return data.data;
 	},
 
-	async updateStudent(id: number, payload: { name?: string; gradeLevel?: string | null; section?: string | null; parentId?: number | null; parentContact?: string | null; }) {
+	async updateStudent(id: number, payload: { name?: string; gradeLevel?: string | null; sectionId?: number | null; parentId?: number | null; dateOfBirth?: string | null; gender?: string | null; placeOfBirth?: string | null; nationality?: string | null; address?: string | null; additionalInfo?: string | null; }) {
 		const token = getToken();
 		if (!token) throw new Error('Not authenticated');
+		const body = Object.fromEntries(Object.entries(payload as any).map(([k, v]) => [k, v === undefined ? null : v]));
 		const res = await fetch(`${API_BASE_URL}/admin/students/${id}`, {
 			method: 'PUT',
 			headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-			body: JSON.stringify(payload)
+			body: JSON.stringify(body)
 		});
 		const data = await res.json();
 		if (!res.ok) throw new Error(data.message || 'Failed to update student');
@@ -173,6 +175,19 @@ export const AdminService = {
 		return data.data || [];
 	},
 
+	async purgeAuditTrail(beforeDays = 90) {
+		const token = getToken();
+		if (!token) throw new Error('Not authenticated');
+		const res = await fetch(`${API_BASE_URL}/admin/audittrail/purge`, {
+			method: 'POST',
+			headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+			body: JSON.stringify({ beforeDays })
+		});
+		const data = await res.json();
+		if (!res.ok) throw new Error(data.message || 'Failed to purge audit trail');
+		return data.data;
+	},
+
 	async listReports(limit = 50, offset = 0) {
 		const token = getToken();
 		if (!token) throw new Error('Not authenticated');
@@ -212,6 +227,29 @@ export const AdminService = {
 		return data.data;
 	},
 
+	// System settings - enrollment enabled flag
+	async getEnrollmentEnabled() {
+		const token = getToken();
+		if (!token) throw new Error('Not authenticated');
+		const res = await fetch(`${API_BASE_URL}/admin/settings/enrollment`, { headers: { 'Authorization': `Bearer ${token}` } });
+		const data = await res.json();
+		if (!res.ok) throw new Error(data.message || 'Failed to fetch setting');
+		return Boolean(data?.data?.enabled);
+	},
+
+	async setEnrollmentEnabled(enabled: boolean) {
+		const token = getToken();
+		if (!token) throw new Error('Not authenticated');
+		const res = await fetch(`${API_BASE_URL}/admin/settings/enrollment`, {
+			method: 'PUT',
+			headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+			body: JSON.stringify({ enabled })
+		});
+		const data = await res.json();
+		if (!res.ok) throw new Error(data.message || 'Failed to update setting');
+		return Boolean(data?.data?.enabled);
+	},
+
 	// Parents
 	async searchParents(q: string) {
 		const token = getToken();
@@ -237,7 +275,7 @@ export const AdminService = {
 		return data.data;
 	},
 
-	async createParentFull(payload: { fullName: string; contactInfo?: string | null; email: string; password: string; }) {
+	async createParentFull(payload: { fullName: string; contactInfo?: string | null; relationship?: string | null; email: string; password: string; }) {
 		const token = getToken();
 		if (!token) throw new Error('Not authenticated');
 		const res = await fetch(`${API_BASE_URL}/admin/parents/full`, {
@@ -264,6 +302,30 @@ export const AdminService = {
 		const data = await res.json();
 		if (!res.ok) throw new Error(data.message || 'Failed to create report');
 		return data.data;
+	},
+
+	async exportReport(type: 'attendance'|'subject-attendance'|'tardiness'|'absences'|'students', params: { dateFrom?: string; dateTo?: string; studentId?: number; scheduleId?: number; }) {
+		const token = getToken();
+		if (!token) throw new Error('Not authenticated');
+		const qs = new URLSearchParams();
+		qs.set('type', type);
+		if (params.dateFrom) qs.set('dateFrom', params.dateFrom);
+		if (params.dateTo) qs.set('dateTo', params.dateTo);
+		if (params.studentId) qs.set('studentId', String(params.studentId));
+		if (params.scheduleId) qs.set('scheduleId', String(params.scheduleId));
+		const res = await fetch(`${API_BASE_URL}/admin/reports/export?${qs.toString()}`, {
+			headers: { 'Authorization': `Bearer ${token}` }
+		});
+		if (!res.ok) throw new Error('Failed to export report');
+		const blob = await res.blob();
+		const url = window.URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `admin-${type}-${new Date().toISOString().split('T')[0]}.csv`;
+		document.body.appendChild(a);
+		a.click();
+		window.URL.revokeObjectURL(url);
+		document.body.removeChild(a);
 	},
 
 	// Schedules
@@ -483,13 +545,18 @@ export const AdminService = {
 		return data.data;
 	},
 
-	async approveEnrollment(id: number, notes?: string, scheduleAssignments?: Array<{scheduleId: number}>): Promise<boolean> {
+	// Alias useful for clarity when called from student view modal
+	async getEnrollmentDetails(studentId: number): Promise<any> {
+		return this.getEnrollment(studentId);
+	},
+
+    async approveEnrollment(id: number, notes?: string, scheduleAssignments?: Array<{scheduleId: number}>, sectionId?: number): Promise<boolean> {
 		const token = getToken();
 		if (!token) throw new Error('Not authenticated');
 		const res = await fetch(`${API_BASE_URL}/admin/enrollments/${id}/approve`, {
 			method: 'POST',
 			headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-			body: JSON.stringify({ notes, scheduleAssignments })
+            body: JSON.stringify({ notes, scheduleAssignments, sectionId })
 		});
 		const data = await res.json();
 		if (!res.ok) throw new Error(data.message || 'Failed to approve enrollment');

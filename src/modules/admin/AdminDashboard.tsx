@@ -31,7 +31,7 @@ export default function AdminDashboard() {
   const renderContent = () => {
     switch (activeSection) {
       case 'dashboard':
-        return <DashboardOverview />;
+        return <DashboardOverview onNavigate={setActiveSection} />;
       case 'attendance':
         return <AttendanceLog />;
       case 'students':
@@ -53,7 +53,7 @@ export default function AdminDashboard() {
       case 'settings':
         return <SettingsSection />;
       default:
-        return <DashboardOverview />;
+        return <DashboardOverview onNavigate={setActiveSection} />;
     }
   };
 

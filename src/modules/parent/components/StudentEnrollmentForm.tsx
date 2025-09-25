@@ -92,12 +92,34 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
   ];
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setEnrollmentData(prev => ({
-        ...prev,
-        documents: Array.from(e.target.files || [])
-      }));
+    if (!e.target.files) return;
+    const MAX_FILES = 10;
+    const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+    const incoming = Array.from(e.target.files);
+    const filtered = incoming.filter(f => f.size <= MAX_SIZE_BYTES);
+
+    if (filtered.length < incoming.length) {
+      setError('Some files were skipped because they exceed 10 MB.');
     }
+
+    setEnrollmentData(prev => {
+      const combined = [...prev.documents, ...filtered].slice(0, MAX_FILES);
+      if ([...prev.documents, ...filtered].length > MAX_FILES) {
+        setError('Only the first 10 files were added (limit reached).');
+      }
+      return {
+        ...prev,
+        documents: combined
+      };
+    });
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setEnrollmentData(prev => ({
+      ...prev,
+      documents: prev.documents.filter((_, i) => i !== index)
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -456,15 +478,27 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
                     }
                   </div>
                 </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  You can select multiple files. Up to 10 files, 10 MB each. Allowed types: PDF, DOC, DOCX, JPG, PNG.
+                </p>
                 
                 {enrollmentData.documents.length > 0 && (
                   <div className="mt-4 bg-gray-50 rounded-lg p-4">
                     <p className="text-sm font-medium text-gray-700 mb-2">Selected files:</p>
                     <ul className="space-y-1">
                       {enrollmentData.documents.map((file, index) => (
-                        <li key={index} className="text-sm text-gray-600 flex items-center">
-                          <FileText className="h-4 w-4 mr-2 text-gray-400" />
-                          {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                        <li key={index} className="text-sm text-gray-600 flex items-center justify-between">
+                          <span className="flex items-center">
+                            <FileText className="h-4 w-4 mr-2 text-gray-400" />
+                            {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                          </span>
+                          <button
+                            type="button"
+                            className="text-xs text-red-600 hover:underline"
+                            onClick={() => handleRemoveFile(index)}
+                          >
+                            Remove
+                          </button>
                         </li>
                       ))}
                     </ul>

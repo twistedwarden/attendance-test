@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
+import { sendEmail, renderAttendanceEmail } from './email.js';
 
 dotenv.config();
 
@@ -489,14 +490,33 @@ export const createManualAttendance = async ({ studentId, date = null, timeIn = 
 
         const [rows] = await pool.execute(
           `SELECT al.AttendanceID, al.StudentID, al.Date, al.TimeIn, al.TimeOut,
-                  s.FullName, s.GradeLevel, sec.SectionName as Section
+                  s.FullName, s.GradeLevel, sec.SectionName as Section,
+                  p.ContactInfo as ParentContact,
+                  ua.Username as ParentEmail
            FROM attendancelog al
            LEFT JOIN studentrecord s ON s.StudentID = al.StudentID
            LEFT JOIN section sec ON sec.SectionID = s.SectionID
+           LEFT JOIN parent p ON p.ParentID = s.ParentID
+           LEFT JOIN useraccount ua ON ua.UserID = p.UserID
            WHERE al.AttendanceID = ?`,
           [attendanceId]
         );
-        return rows[0] || null;
+        const row = rows[0] || null;
+        if (row) {
+          try {
+            const parentEmail = row.ParentEmail || row.ParentContact || null;
+            if (parentEmail) {
+              const { subject, html } = renderAttendanceEmail({
+                studentName: row.FullName,
+                date: row.Date,
+                timeIn: row.TimeIn,
+                timeOut: null,
+              });
+              sendEmail({ to: parentEmail, subject, html }).catch(() => {});
+            }
+          } catch {}
+        }
+        return row;
       }
     }
 
@@ -577,14 +597,33 @@ export const createManualAttendance = async ({ studentId, date = null, timeIn = 
 
         const [rows] = await pool.execute(
           `SELECT al.AttendanceID, al.StudentID, al.Date, al.TimeIn, al.TimeOut,
-                  s.FullName, s.GradeLevel, sec.SectionName as Section
+                  s.FullName, s.GradeLevel, sec.SectionName as Section,
+                  p.ContactInfo as ParentContact,
+                  ua.Username as ParentEmail
            FROM attendancelog al
            LEFT JOIN studentrecord s ON s.StudentID = al.StudentID
            LEFT JOIN section sec ON sec.SectionID = s.SectionID
+           LEFT JOIN parent p ON p.ParentID = s.ParentID
+           LEFT JOIN useraccount ua ON ua.UserID = p.UserID
            WHERE al.AttendanceID = ?`,
           [attendanceId]
         );
-        return rows[0] || null;
+        const row = rows[0] || null;
+        if (row) {
+          try {
+            const parentEmail = row.ParentEmail || row.ParentContact || null;
+            if (parentEmail) {
+              const { subject, html } = renderAttendanceEmail({
+                studentName: row.FullName,
+                date: row.Date,
+                timeIn: null,
+                timeOut: row.TimeOut,
+              });
+              sendEmail({ to: parentEmail, subject, html }).catch(() => {});
+            }
+          } catch {}
+        }
+        return row;
       }
       // If no open row exists, fall through to insert a new row with only TimeOut
     }
@@ -666,14 +705,33 @@ export const createManualAttendance = async ({ studentId, date = null, timeIn = 
 
     const [rows] = await pool.execute(
       `SELECT al.AttendanceID, al.StudentID, al.Date, al.TimeIn, al.TimeOut,
-              s.FullName, s.GradeLevel, sec.SectionName as Section
+              s.FullName, s.GradeLevel, sec.SectionName as Section,
+              p.ContactInfo as ParentContact,
+              ua.Username as ParentEmail
        FROM attendancelog al
        LEFT JOIN studentrecord s ON s.StudentID = al.StudentID
        LEFT JOIN section sec ON sec.SectionID = s.SectionID
+       LEFT JOIN parent p ON p.ParentID = s.ParentID
+       LEFT JOIN useraccount ua ON ua.UserID = p.UserID
        WHERE al.AttendanceID = ?`,
       [result.insertId]
     );
-    return rows[0] || null;
+    const row = rows[0] || null;
+    if (row) {
+      try {
+        const parentEmail = row.ParentEmail || row.ParentContact || null;
+        if (parentEmail) {
+          const { subject, html } = renderAttendanceEmail({
+            studentName: row.FullName,
+            date: row.Date,
+            timeIn: row.TimeIn,
+            timeOut: row.TimeOut,
+          });
+          sendEmail({ to: parentEmail, subject, html }).catch(() => {});
+        }
+      } catch {}
+    }
+    return row;
   } catch (error) {
     console.error('Error creating manual attendance:', error);
     throw error;

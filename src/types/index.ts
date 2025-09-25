@@ -17,6 +17,7 @@ export interface AuthContextType {
   otpPhase?: boolean;
   otpUserId?: number | null;
   resetOtpPhase?: () => void;
+  hydrateFromStoredSession?: () => Promise<User | null>;
 }
 
 export interface LoginFormData {

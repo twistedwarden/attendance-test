@@ -4,25 +4,14 @@ import { AdminService } from './api/adminService';
 
 export default function ReportsSection() {
   const [range, setRange] = useState<'Today'|'This Week'|'This Month'>('Today');
-  const [format, setFormat] = useState<'PDF'|'CSV'|'Excel'>('PDF');
+  const [format, setFormat] = useState<'CSV'>('CSV');
+  const [type, setType] = useState<'attendance'|'subject-attendance'|'tardiness'|'absences'|'students'>('attendance');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [reports, setReports] = useState<any[]>([]);
 
-  const load = async () => {
-    try {
-      const data = await AdminService.listReports(20, 0);
-      setReports(data);
-    } catch (e) {
-      // noop
-    }
-  };
+  
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  const generate = async () => {
+  const exportNow = async () => {
     try {
       setLoading(true);
       setMessage(null);
@@ -31,16 +20,12 @@ export default function ReportsSection() {
       if (range === 'Today') start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       if (range === 'This Week') start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
       if (range === 'This Month') start = new Date(now.getFullYear(), now.getMonth(), 1);
-      const payload = {
-        dateRangeStart: start.toISOString().slice(0,10),
-        dateRangeEnd: now.toISOString().slice(0,10),
-        reportType: range === 'Today' ? 'Daily' : range === 'This Week' ? 'Weekly' : 'Monthly' as const
-      };
-      await AdminService.createReport(payload as any);
-      setMessage('Report generated successfully');
-      load();
+      const dateFrom = start.toISOString().slice(0,10);
+      const dateTo = now.toISOString().slice(0,10);
+      await AdminService.exportReport(type, { dateFrom, dateTo });
+      setMessage('Export started');
     } catch (e: any) {
-      setMessage(e?.message || 'Failed to generate report');
+      setMessage(e?.message || 'Failed to export');
     } finally {
       setLoading(false);
     }
@@ -87,7 +72,7 @@ export default function ReportsSection() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-6">Generate Custom Report</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-6">Generate / Export Report</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
@@ -98,46 +83,32 @@ export default function ReportsSection() {
             </select>
           </div>
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Report Type</label>
+            <select value={type} onChange={(e) => setType(e.target.value as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+              <option value="attendance">Attendance (logs)</option>
+              <option value="subject-attendance">Subject Attendance</option>
+              <option value="tardiness">Tardiness (Late)</option>
+              <option value="absences">Absences</option>
+              <option value="students">Student Directory</option>
+            </select>
+          </div>
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Format</label>
             <select value={format} onChange={(e) => setFormat(e.target.value as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-              <option>PDF</option>
               <option>CSV</option>
-              <option>Excel</option>
             </select>
           </div>
         </div>
-        <button disabled={loading} onClick={generate} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg flex items-center space-x-2 transition-colors">
+        <div className="flex gap-3">
+        <button disabled={loading} onClick={exportNow} className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg flex items-center space-x-2 transition-colors">
           <Download className="h-5 w-5" />
-          <span>{loading ? 'Generating...' : 'Generate Report'}</span>
+          <span>{loading ? 'Exporting...' : 'Export CSV'}</span>
         </button>
+        </div>
         {message && <div className="mt-3 text-sm text-gray-700">{message}</div>}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Reports</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Generated</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">StudentID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ScheduleID</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {reports.map((r) => (
-                <tr key={r.ReportID} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(r.GeneratedDate).toLocaleString()}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.ReportType}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.StudentID ?? '-'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.ScheduleID ?? '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Recent Reports list removed as we no longer save metadata */}
     </div>
   );
 } 

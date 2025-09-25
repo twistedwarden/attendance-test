@@ -1,6 +1,7 @@
 // import React from 'react';
 import { Clock, CheckCircle, XCircle, User, MessageSquare, BookOpen, Calendar, Search, Filter, Eye, BarChart3, TrendingUp, Users, FileText } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { AdminService } from './api/adminService';
 import StudentSearchInput from './components/StudentSearchInput';
 import Modal from './components/Modal';
@@ -42,10 +43,12 @@ export default function AttendanceLog() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openManual, setOpenManual] = useState(false);
-  const [form, setForm] = useState<{ studentId: string; date: string; timeIn: string; status: 'Present'|'Excused'; }>({
+  const [form, setForm] = useState<{ studentId: string; date: string; timeIn: string; timeOut: string; entryType: 'in'|'out'; status: 'Present'|'Excused'; }>({
     studentId: '',
     date: new Date().toISOString().slice(0,10),
     timeIn: new Date().toTimeString().slice(0,5),
+    timeOut: new Date().toTimeString().slice(0,5),
+    entryType: 'in',
     status: 'Present'
   });
   const [submitting, setSubmitting] = useState(false);
@@ -161,6 +164,8 @@ export default function AttendanceLog() {
       studentId: '',
       date: new Date().toISOString().slice(0,10),
       timeIn: new Date().toTimeString().slice(0,5),
+      timeOut: new Date().toTimeString().slice(0,5),
+      entryType: 'in',
       status: 'Present'
     });
     setSelectedStudent(null);
@@ -178,7 +183,10 @@ export default function AttendanceLog() {
   const formatted = useMemo(() => {
     return (items || []).map((r) => {
       const timeRaw = r.TimeIn || r.TimeOut || '';
+      const isTimeOutOnly = !r.TimeIn && !!r.TimeOut;
       const time = timeRaw ? timeRaw.toString().slice(0,5) : '';
+      const timeIn = r.TimeIn ? r.TimeIn.toString().slice(0,5) : '';
+      const timeOut = r.TimeOut ? r.TimeOut.toString().slice(0,5) : '';
       const statusLower = (r.Status || '').toLowerCase();
       let status: 'present' | 'failed' | 'late' = 'present';
       if (statusLower.includes('late')) status = 'late';
@@ -197,8 +205,11 @@ export default function AttendanceLog() {
         studentName: r.FullName || `Student #${r.StudentID}`,
         grade: [r.GradeLevel, r.Section].filter(Boolean).join(' ').trim() || 'N/A',
         time: time,
+        timeIn,
+        timeOut,
         date: date,
         status,
+        isTimeOutOnly,
         parentNotified: false
       };
     });
@@ -261,6 +272,7 @@ export default function AttendanceLog() {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'present':
+        // Status text for 'present' is determined per-record using isTimeOutOnly
         return 'Time in';
       case 'late':
         return 'Late Arrival';
@@ -398,7 +410,9 @@ export default function AttendanceLog() {
                 <div>
                   <p className="font-medium text-gray-900">{record.studentName}</p>
                   <p className="text-sm text-gray-600">
-                    {record.grade} • {getStatusText(record.status)}
+                  {record.grade} • {viewMode === 'subject'
+                    ? (record.status === 'present' ? 'Present' : record.status === 'late' ? 'Late' : 'Absent')
+                    : (record.status === 'present' && (record as any).isTimeOutOnly ? 'Time out' : getStatusText(record.status))}
                     {viewMode === 'subject' && 'subject' in record && (
                       <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
                         {(record as any).subject}
@@ -409,7 +423,20 @@ export default function AttendanceLog() {
               </div>
               <div className="flex items-center space-x-3">
                 <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">{record.time}</p>
+                  {viewMode === 'general' ? (
+                    <div className="flex items-center gap-4 justify-end">
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500">In</p>
+                        <p className="text-sm font-medium text-gray-900">{(record as any).timeIn || '--:--'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500">Out</p>
+                        <p className="text-sm font-medium text-gray-900">{(record as any).timeOut || '--:--'}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-medium text-gray-900">{record.time}</p>
+                  )}
                   <p className="text-xs text-gray-500">{record.date}</p>
                   <div className="flex items-center space-x-1 mt-1">
                     <MessageSquare className={`h-3 w-3 ${record.parentNotified ? 'text-green-500' : 'text-gray-400'}`} />
@@ -451,6 +478,29 @@ export default function AttendanceLog() {
               <div className="mb-3 p-2 rounded border border-red-200 bg-red-50 text-red-700 text-sm">{error}</div>
             )}
             <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-gray-700">Entry Type:</label>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1 text-sm">
+                    <input
+                      type="radio"
+                      className="accent-blue-600"
+                      checked={form.entryType === 'in'}
+                      onChange={() => setForm({ ...form, entryType: 'in' })}
+                    />
+                    Time In
+                  </label>
+                  <label className="flex items-center gap-1 text-sm">
+                    <input
+                      type="radio"
+                      className="accent-blue-600"
+                      checked={form.entryType === 'out'}
+                      onChange={() => setForm({ ...form, entryType: 'out' })}
+                    />
+                    Time Out
+                  </label>
+                </div>
+              </div>
               <div>
                 <label className="block text-sm text-gray-700 mb-1">Student</label>
                 <StudentSearchInput
@@ -458,6 +508,9 @@ export default function AttendanceLog() {
                   onChange={(value) => setForm({ ...form, studentId: value })}
                   onSelect={handleStudentSelect}
                   placeholder="Search by ID or name..."
+                  allowedStudentIds={form.entryType === 'out' ? (items
+                    .filter(r => r.Date?.slice(0,10) === form.date && r.TimeIn && !r.TimeOut)
+                    .map(r => r.StudentID)) : undefined}
                 />
                 {selectedStudent && (
                   <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
@@ -483,27 +536,41 @@ export default function AttendanceLog() {
                     onChange={(e) => setForm({ ...form, date: e.target.value })}
                   />
                 </div>
-                <div className="flex-1">
-                  <label className="block text-sm text-gray-700 mb-1">Time In</label>
-                  <input
-                    type="time"
+                {form.entryType === 'in' ? (
+                  <div className="flex-1">
+                    <label className="block text-sm text-gray-700 mb-1">Time In</label>
+                    <input
+                      type="time"
+                      className="w-full border rounded px-3 py-2 text-sm"
+                      value={form.timeIn}
+                      onChange={(e) => setForm({ ...form, timeIn: e.target.value })}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex-1">
+                    <label className="block text-sm text-gray-700 mb-1">Time Out</label>
+                    <input
+                      type="time"
+                      className="w-full border rounded px-3 py-2 text-sm"
+                      value={form.timeOut}
+                      onChange={(e) => setForm({ ...form, timeOut: e.target.value })}
+                    />
+                  </div>
+                )}
+              </div>
+              {form.entryType === 'in' && (
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Status</label>
+                  <select
                     className="w-full border rounded px-3 py-2 text-sm"
-                    value={form.timeIn}
-                    onChange={(e) => setForm({ ...form, timeIn: e.target.value })}
-                  />
+                    value={form.status}
+                    onChange={(e) => setForm({ ...form, status: e.target.value as any })}
+                  >
+                    <option value="Present">Time in</option>
+                    <option value="Excused">Excused</option>
+                  </select>
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1">Status</label>
-                <select
-                  className="w-full border rounded px-3 py-2 text-sm"
-                  value={form.status}
-                  onChange={(e) => setForm({ ...form, status: e.target.value as any })}
-                >
-                  <option value="Present">Time in</option>
-                  <option value="Excused">Excused</option>
-                </select>
-              </div>
+              )}
             </div>
             <div className="mt-5 flex justify-end space-x-2">
               <button className="px-3 py-1.5 text-sm rounded border" onClick={() => { setOpenManual(false); resetForm(); }} disabled={submitting}>Cancel</button>
@@ -514,17 +581,28 @@ export default function AttendanceLog() {
                   try {
                     setSubmitting(true);
                     setError(null);
-                    await AdminService.createManualAttendance({
-                      studentId: Number(form.studentId),
-                      date: form.date,
-                      timeIn: form.timeIn + ':00',
-                      status: form.status
-                    });
+                    if (form.entryType === 'in') {
+                      await AdminService.createManualAttendance({
+                        studentId: Number(form.studentId),
+                        date: form.date,
+                        timeIn: form.timeIn + ':00',
+                        status: form.status
+                      });
+                      toast.success('Time in recorded and notifications queued');
+                    } else {
+                      await AdminService.createManualAttendance({
+                        studentId: Number(form.studentId),
+                        date: form.date,
+                        timeOut: form.timeOut + ':00'
+                      });
+                      toast.success('Time out recorded and notifications queued');
+                    }
                     setOpenManual(false);
                     resetForm();
                     await load();
                   } catch (e: any) {
                     setError(e?.message || 'Failed to add attendance');
+                    toast.error(e?.message || 'Failed to add attendance');
                   } finally {
                     setSubmitting(false);
                   }
@@ -615,7 +693,7 @@ export default function AttendanceLog() {
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <div className="flex items-center space-x-2">
                 <CheckCircle className="h-4 w-4 text-green-600" />
-                <span className="text-sm font-medium text-green-800">Time in</span>
+                    <span className="text-sm font-medium text-green-800">Present</span>
               </div>
               <p className="text-2xl font-bold text-green-900 mt-1">{attendanceStats.present}</p>
             </div>
@@ -715,7 +793,7 @@ export default function AttendanceLog() {
                             ? 'bg-yellow-100 text-yellow-800' 
                             : 'bg-red-100 text-red-800'
                         }`}>
-                          {status === 'present' ? 'Time in' : status === 'late' ? 'Late Arrival' : 'Absent'}
+                          {status === 'present' ? 'Present' : status === 'late' ? 'Late Arrival' : 'Absent'}
                         </div>
                         {status === 'present' && <CheckCircle className="h-5 w-5 text-green-500" />}
                         {status === 'late' && <Clock className="h-5 w-5 text-yellow-500" />}

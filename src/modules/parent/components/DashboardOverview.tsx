@@ -81,8 +81,17 @@ const DashboardOverview = ({
               <User size={24} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">{selectedStudent.fullName}</h1>
-              <p className="text-blue-100 text-lg">Grade {selectedStudent.gradeLevel} • Section {selectedStudent.section}</p>
+              <h1 className="text-2xl font-bold flex items-center space-x-3">
+                <span>{selectedStudent.fullName}</span>
+                {selectedStudent.enrollmentStatus === 'pending' && (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">Pending</span>
+                )}
+              </h1>
+              <p className="text-blue-100 text-lg">
+                {selectedStudent.enrollmentStatus === 'pending' 
+                  ? 'Enrollment Pending'
+                  : `Grade ${selectedStudent.gradeLevel} • Section ${selectedStudent.section}`}
+              </p>
             </div>
           </div>
           <div className="text-right">

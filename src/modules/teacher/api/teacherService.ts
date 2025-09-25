@@ -73,6 +73,42 @@ export const TeacherService = {
     return data.data;
   }
   ,
+  // ===== MESSAGES METHODS =====
+  async getMessageRecipients(): Promise<Array<{ parentId: number; parentUserId: number; parentName: string; studentNames: string[] }>> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(`${API_BASE_URL}/teacher/messages/recipients`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch recipients');
+    return data.data || [];
+  },
+
+  async getMessages(limit: number = 50): Promise<Array<{ id: number; dateSent: string; status: 'sent'|'read'; type: string; parentName?: string | null; studentName?: string | null; message: string }>> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const params = new URLSearchParams({ limit: String(limit) });
+    const res = await fetch(`${API_BASE_URL}/teacher/messages?${params.toString()}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch messages');
+    return data.data || [];
+  },
+
+  async sendMessage(payload: { parentId?: number; parentUserId?: number; studentId?: number; type?: 'attendance'|'behavior'|'academic'|'general'; message: string }): Promise<void> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(`${API_BASE_URL}/teacher/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to send message');
+  },
+
   async getStudentDetails(scheduleId: number, studentId: number, opts: { dateFrom?: string; dateTo?: string } = {}) {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
