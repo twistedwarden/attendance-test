@@ -1924,7 +1924,7 @@ router.get('/enrollments', async (req, res) => {
             params.push(status);
         }
 
-        const query = `
+        let query = `
             SELECT 
                 sr.StudentID as id,
                 sr.FullName as name,
@@ -1960,10 +1960,12 @@ router.get('/enrollments', async (req, res) => {
             LEFT JOIN section sec ON sr.SectionID = sec.SectionID
             ${whereClause}
             ORDER BY sr.CreatedBy DESC
-            LIMIT ? OFFSET ?
         `;
 
-        params.push(limitNumEnroll, offsetNumEnroll);
+        // Inline sanitized numeric LIMIT/OFFSET to avoid MySQL parameter issues
+        query += `\n            LIMIT ${limitNumEnroll} OFFSET ${offsetNumEnroll}`;
+
+        // Do not push LIMIT/OFFSET as bound params since they are inlined
 
         const [enrollments] = await pool.execute(query, params);
 
