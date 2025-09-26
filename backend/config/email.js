@@ -1,43 +1,44 @@
-import nodemailer from 'nodemailer';
+import fetch from 'node-fetch';
 
-let transporter;
-
-const getTransporter = () => {
-	if (!transporter) {
-		transporter = nodemailer.createTransport({
-			host: process.env.SMTP_HOST,
-			port: Number(process.env.SMTP_PORT || 587),
-			secure: String(process.env.SMTP_SECURE || 'false') === 'true',
-			requireTLS: String(process.env.SMTP_REQUIRE_TLS || 'false') === 'true',
-			ignoreTLS: String(process.env.SMTP_IGNORE_TLS || 'false') === 'true',
-			name: process.env.SMTP_NAME || undefined,
-			connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 15000),
-			greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000),
-			socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 20000),
-			pool: String(process.env.SMTP_POOL || 'true') === 'true',
-			maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS || 3),
-			maxMessages: Number(process.env.SMTP_MAX_MESSAGES || 100),
-			auth: {
-				user: process.env.SMTP_USER,
-				pass: process.env.SMTP_PASS,
-			},
-			// Allow self-signed if explicitly enabled
-			tls: (String(process.env.SMTP_ALLOW_SELF_SIGNED || 'false') === 'true') ? { rejectUnauthorized: false } : undefined,
-		});
-	}
-	return transporter;
-};
+// Brevo API is used; no SMTP transporter required.
 
 const getFrom = () => {
-	const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
-	const fromName = process.env.SMTP_FROM_NAME || 'Attendance System';
-	return `${fromName} <${fromEmail}>`;
+	const fromEmail = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER;
+	const fromName = process.env.BREVO_SENDER_NAME || process.env.SMTP_FROM_NAME || 'Attendance System';
+	return { name: fromName, email: fromEmail };
 };
 
 export const sendEmail = async ({ to, subject, html }) => {
 	if (!to) return;
-	const tx = getTransporter();
-	await tx.sendMail({ from: getFrom(), to, subject, html });
+	const apiKey = process.env.BREVO_API_KEY;
+	if (!apiKey) {
+		throw new Error('BREVO_API_KEY is not configured');
+	}
+
+	const sender = getFrom();
+	const payload = {
+		sender,
+		to: [{ email: to }],
+		subject,
+		htmlContent: html,
+	};
+
+	const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+		method: 'POST',
+		headers: {
+			'api-key': apiKey,
+			'accept': 'application/json',
+			'content-type': 'application/json',
+		},
+		body: JSON.stringify(payload),
+	});
+
+	if (!response.ok) {
+		const errorText = await response.text().catch(() => '');
+		throw new Error(`Brevo send failed: ${response.status} ${response.statusText} ${errorText}`);
+	}
+
+	return await response.json().catch(() => ({}));
 };
 
 export const renderAttendanceEmail = ({ studentName, date, timeIn = null, timeOut = null }) => {
