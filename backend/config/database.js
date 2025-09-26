@@ -233,10 +233,10 @@ export const updateUserStatus = async (id, status) => {
 
 export const getAuditTrail = async ({ limit = 50, offset = 0 } = {}) => {
   try {
-    const [rows] = await pool.execute(
-      'SELECT * FROM audittrail ORDER BY ActionDateTime DESC LIMIT ? OFFSET ?',
-      [Number(limit), Number(offset)]
-    );
+    const limitNum = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : 50;
+    const offsetNum = Number.isFinite(Number(offset)) && Number(offset) >= 0 ? Number(offset) : 0;
+    const sql = `SELECT * FROM audittrail ORDER BY ActionDateTime DESC LIMIT ${limitNum} OFFSET ${offsetNum}`;
+    const [rows] = await pool.execute(sql);
     return rows;
   } catch (error) {
     console.error('Error fetching audit trail:', error);
@@ -276,10 +276,10 @@ export const createAuditTrail = async ({ userId, action, tableAffected = null, r
 
 export const getAttendanceReports = async ({ limit = 50, offset = 0 } = {}) => {
   try {
-    const [rows] = await pool.execute(
-      'SELECT * FROM attendancereport ORDER BY GeneratedDate DESC LIMIT ? OFFSET ?',
-      [Number(limit), Number(offset)]
-    );
+    const limitNum = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : 50;
+    const offsetNum = Number.isFinite(Number(offset)) && Number(offset) >= 0 ? Number(offset) : 0;
+    const sql = `SELECT * FROM attendancereport ORDER BY GeneratedDate DESC LIMIT ${limitNum} OFFSET ${offsetNum}`;
+    const [rows] = await pool.execute(sql);
     return rows;
   } catch (error) {
     console.error('Error fetching attendance reports:', error);
