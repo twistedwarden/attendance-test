@@ -800,8 +800,9 @@ router.get('/subjectattendance', async (req, res) => {
             params.push(Number(studentId));
         }
         
-        sql += ' ORDER BY sa.Date DESC, sa.CreatedAt DESC LIMIT ? OFFSET ?';
-        params.push(limitNum, offsetNum);
+        sql += ' ORDER BY sa.Date DESC, sa.CreatedAt DESC';
+        // Inline sanitized numeric LIMIT/OFFSET to avoid MySQL parameter issues
+        sql += ` LIMIT ${limitNum} OFFSET ${offsetNum}`;
         
         const [rows] = await pool.execute(sql, params);
         return res.json({ success: true, data: rows });
