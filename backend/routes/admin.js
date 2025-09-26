@@ -763,6 +763,8 @@ router.post('/attendancelog', async (req, res) => {
 router.get('/subjectattendance', async (req, res) => {
     try {
         const { limit = 50, offset = 0, subjectId, date, studentId } = req.query;
+        const limitNum = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : 50;
+        const offsetNum = Number.isFinite(Number(offset)) && Number(offset) >= 0 ? Number(offset) : 0;
         
         let sql = `
             SELECT 
@@ -799,7 +801,7 @@ router.get('/subjectattendance', async (req, res) => {
         }
         
         sql += ' ORDER BY sa.Date DESC, sa.CreatedAt DESC LIMIT ? OFFSET ?';
-        params.push(Number(limit), Number(offset));
+        params.push(limitNum, offsetNum);
         
         const [rows] = await pool.execute(sql, params);
         return res.json({ success: true, data: rows });
@@ -1910,7 +1912,9 @@ router.delete('/subjects/:id', async (req, res) => {
 router.get('/enrollments', async (req, res) => {
     try {
         const { status = 'all', page = 1, limit = 10 } = req.query;
-        const offset = (page - 1) * limit;
+        const pageNum = Number.isFinite(Number(page)) && Number(page) > 0 ? Number(page) : 1;
+        const limitNumEnroll = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : 10;
+        const offsetNumEnroll = (pageNum - 1) * limitNumEnroll;
 
         let whereClause = '';
         let params = [];
@@ -1959,7 +1963,7 @@ router.get('/enrollments', async (req, res) => {
             LIMIT ? OFFSET ?
         `;
 
-        params.push(parseInt(limit), parseInt(offset));
+        params.push(limitNumEnroll, offsetNumEnroll);
 
         const [enrollments] = await pool.execute(query, params);
 
@@ -1976,10 +1980,10 @@ router.get('/enrollments', async (req, res) => {
             success: true,
             data: enrollments,
             pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
+                page: pageNum,
+                limit: limitNumEnroll,
                 total,
-                pages: Math.ceil(total / limit)
+                pages: Math.ceil(total / limitNumEnroll)
             }
         });
     } catch (error) {
