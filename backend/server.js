@@ -9,11 +9,8 @@ import adminRoutes from './routes/admin.js';
 import parentRoutes from './routes/parent.js';
 import teacherRoutes from './routes/teacher.js';
 import registrarRoutes from './routes/registrar.js';
-<<<<<<< HEAD
-=======
 import fingerprintRoutes from './routes/fingerprint.js';
 import esp32Routes from './routes/esp32.js';
->>>>>>> 5857bcd (ratbu)
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -88,18 +85,6 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/parent', parentRoutes);
 app.use('/api/teacher', teacherRoutes);
 app.use('/api/registrar', registrarRoutes);
-<<<<<<< HEAD
-// Load fingerprint API routes dynamically so deployment doesn't fail
-// when the sibling `fp-api` package is not installed in this environment.
-try {
-  const fpModule = await import('../fp-api/routes/fingerprint.js');
-  const fingerprintRoutes = fpModule.default || fpModule;
-  app.use('/api/fingerprint', fingerprintRoutes);
-  console.log('Fingerprint API routes loaded');
-} catch (err) {
-  console.warn('Fingerprint API not available. Continuing without it. Reason:', err?.message || err);
-}
-=======
 // Load fingerprint API routes
 app.use('/api/fingerprint', fingerprintRoutes);
 console.log('Fingerprint API routes loaded');
@@ -107,7 +92,6 @@ console.log('Fingerprint API routes loaded');
 // Load ESP32 control API routes
 app.use('/api/esp32', esp32Routes);
 console.log('ESP32 control API routes loaded');
->>>>>>> 5857bcd (ratbu)
 
 // Serve React build (dist) in production when available
 if ((process.env.NODE_ENV || 'development') === 'production') {
@@ -169,23 +153,6 @@ app.use((error, req, res, next) => {
   });
 });
 
-<<<<<<< HEAD
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully');
-  process.exit(0);
-}); 
-=======
 // Global error handlers to prevent crashes
 process.on('uncaughtException', (error) => {
   console.error('🚨 UNCAUGHT EXCEPTION - Server will restart:', error);
@@ -243,5 +210,4 @@ server.on('error', (error) => {
 
 // Keep-alive settings to prevent connection drops
 server.keepAliveTimeout = 65000;
-server.headersTimeout = 66000; 
->>>>>>> 5857bcd (ratbu)
+server.headersTimeout = 66000;
