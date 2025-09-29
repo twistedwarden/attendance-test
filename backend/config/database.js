@@ -36,7 +36,7 @@ const initializeDatabase = async () => {
 
     // Ensure OTP storage table exists
     await ensureOtpStorage();
-    
+
     // Ensure fingerprint mapping table exists
     await ensureFingerprintMapping();
 

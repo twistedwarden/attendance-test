@@ -227,17 +227,6 @@ export const ESP32Service = {
     return data;
   },
 
-  async deleteFingerprint(deviceId: string, studentId: number): Promise<void> {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    
-    const res = await fetch(`${API_BASE_URL}/esp32/devices/${deviceId}/fingerprints/${studentId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Failed to delete fingerprint');
-  },
 
   async sendDeviceCommand(deviceId: string, command: string, parameters: any = {}): Promise<any> {
     const token = getToken();
