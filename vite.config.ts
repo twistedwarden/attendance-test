@@ -10,7 +10,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'attendance-test-production.up.railway.app',
+        target: 'https://attendance-test-production.up.railway.app',
         changeOrigin: true,
         secure: false,
       },
