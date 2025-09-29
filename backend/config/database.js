@@ -37,6 +37,12 @@ const initializeDatabase = async () => {
     // Ensure OTP storage table exists
     await ensureOtpStorage();
 
+<<<<<<< HEAD
+=======
+    // Ensure fingerprint mapping table exists
+    await ensureFingerprintMapping();
+
+>>>>>>> 5857bcd (ratbu)
     // Initialize with default users if table is empty
     await initializeDefaultUsers();
   } catch (error) {
@@ -62,6 +68,30 @@ const ensureOtpStorage = async () => {
   }
 };
 
+<<<<<<< HEAD
+=======
+// Maintain a normalized mapping of StudentID to FingerprintID
+const ensureFingerprintMapping = async () => {
+  try {
+    await pool.execute(
+      `CREATE TABLE IF NOT EXISTS fingerprint_mapping (
+        StudentID INT NOT NULL,
+        FingerprintID INT NOT NULL,
+        FingerName VARCHAR(32) NULL,
+        IsPrimary TINYINT(1) NOT NULL DEFAULT 1,
+        CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UpdatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (StudentID, FingerprintID),
+        CONSTRAINT fk_fm_student FOREIGN KEY (StudentID) REFERENCES studentrecord(StudentID) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`
+    );
+  } catch (error) {
+    console.error('❌ Error ensuring fingerprint_mapping table:', error.message);
+    // Non-fatal: keep running even if creation fails
+  }
+};
+
+>>>>>>> 5857bcd (ratbu)
 // Initialize default users
 const initializeDefaultUsers = async () => {
   try {

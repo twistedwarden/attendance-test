@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { FileText, Users, BarChart3, Home, X, ClipboardList, UserCheck, Settings } from 'lucide-react';
+=======
+import { FileText, Users, BarChart3, Home, X, ClipboardList, UserCheck, Settings, Smartphone } from 'lucide-react';
+>>>>>>> 5857bcd (ratbu)
 import { useAuth } from '../auth/AuthContext';
 
 interface RegistrarSidebarProps {
@@ -20,6 +24,10 @@ export default function RegistrarSidebar({
     { id: 'overview', label: 'Overview', icon: Home, description: 'Dashboard & Stats' },
     { id: 'enrollments', label: 'Enrollments', icon: FileText, description: 'Review & Approve' },
     { id: 'students', label: 'Student Management', icon: Users, description: 'Modify Student Info' },
+<<<<<<< HEAD
+=======
+    { id: 'esp32', label: 'ESP32 Control', icon: Smartphone, description: 'Device Management' },
+>>>>>>> 5857bcd (ratbu)
     { id: 'reports', label: 'Reports', icon: BarChart3, description: 'Attendance & Analytics' },
     { id: 'settings', label: 'Account Settings', icon: Settings, description: 'Manage your account' },
   ];

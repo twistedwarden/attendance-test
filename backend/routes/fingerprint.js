@@ -1,0 +1,366 @@
+import express from 'express';
+import { pool } from '../config/database.js';
+import crypto from 'crypto';
+import { sendEmail, renderAttendanceEmail } from '../config/email.js';
+
+const router = express.Router();
+
+// API Key validation middleware
+const validateApiKey = (req, res, next) => {
+  const apiKey = req.headers['x-api-key'];
+  const deviceId = req.headers['x-device-id'];
+  
+  // Expected API key from ESP32 connection guide
+  const expectedApiKey = '765a6c3504ca79e2cdbd9197fbe9f99d';
+  
+  if (!apiKey || !deviceId) {
+    return res.status(401).json({
+      success: false,
+      message: 'Missing API key or device ID'
+    });
+  }
+  
+  if (apiKey !== expectedApiKey) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid API key'
+    });
+  }
+  
+  req.deviceId = deviceId;
+  next();
+};
+
+// Apply API key validation to all routes
+router.use(validateApiKey);
+
+// Health check endpoint
+router.get('/health', async (req, res) => {
+  try {
+    // Test database connection
+    await pool.query('SELECT 1');
+    
+    res.json({
+      success: true,
+      message: 'Fingerprint API is healthy',
+      deviceId: req.deviceId,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Database connection failed'
+    });
+  }
+});
+
+// Verify fingerprint and record attendance
+router.post('/verify-id', async (req, res) => {
+  const { studentId } = req.body;
+  const deviceId = req.deviceId;
+  const startTime = Date.now();
+  
+  try {
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student ID is required'
+      });
+    }
+    
+    // Check if student exists
+    const [students] = await pool.query(
+      'SELECT StudentID, FullName, GradeLevel FROM studentrecord WHERE StudentID = ?',
+      [studentId]
+    );
+    
+    if (students.length === 0) {
+      // Log failed attempt (StudentID is NULL since student doesn't exist)
+      await pool.query(
+        'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, ErrorMessage, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?, ?)',
+        [null, deviceId, 'verify', 'failed', 'Student not found', req.ip]
+      );
+      
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+    
+    const student = students[0];
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD format
+    const currentTime = new Date().toTimeString().slice(0, 8);
+    
+    // Check if attendance already recorded today (using DATE() function to compare only date part)
+    const [existingAttendance] = await pool.query(
+      'SELECT AttendanceID FROM attendancelog WHERE StudentID = ? AND DATE(Date) = ?',
+      [studentId, today]
+    );
+    
+    if (existingAttendance.length > 0) {
+      // Update existing attendance with time out
+      await pool.query(
+        'UPDATE attendancelog SET TimeOut = ? WHERE StudentID = ? AND DATE(Date) = ?',
+        [currentTime, studentId, today]
+      );
+      
+      // Log successful operation
+      await pool.query(
+        'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+        [studentId, deviceId, 'verify', 'success', req.ip]
+      );
+      
+      // Try to fetch parent contact and send email for Time Out
+      try {
+        const [rows] = await pool.query(
+          `SELECT al.AttendanceID, al.StudentID, al.Date, al.TimeIn, al.TimeOut,
+                  s.FullName, s.GradeLevel, sec.SectionName as Section,
+                  p.ContactInfo as ParentContact,
+                  ua.Username as ParentEmail
+           FROM attendancelog al
+           LEFT JOIN studentrecord s ON s.StudentID = al.StudentID
+           LEFT JOIN section sec ON sec.SectionID = s.SectionID
+           LEFT JOIN parent p ON p.ParentID = s.ParentID
+           LEFT JOIN useraccount ua ON ua.UserID = p.UserID
+           WHERE al.StudentID = ? AND DATE(al.Date) = ?
+           ORDER BY al.AttendanceID DESC LIMIT 1`,
+          [studentId, today]
+        );
+        const row = rows[0] || null;
+        if (row) {
+          const parentEmail = row.ParentEmail || row.ParentContact || null;
+          if (parentEmail) {
+            const { subject, html } = renderAttendanceEmail({
+              studentName: row.FullName,
+              date: row.Date,
+              timeIn: row.TimeIn,
+              timeOut: currentTime,
+            });
+            // Fire-and-forget; do not block API
+            sendEmail({ to: parentEmail, subject, html }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        // non-fatal
+        console.error('Fingerprint timeout email send failed:', e?.message || e);
+      }
+
+      return res.json({
+        success: true,
+        message: 'Time out recorded',
+        student: {
+          id: student.StudentID,
+          name: student.FullName,
+          grade: student.GradeLevel
+        },
+        action: 'timeout'
+      });
+    } else {
+      // Create new attendance record
+      await pool.query(
+        'INSERT INTO attendancelog (StudentID, Date, TimeIn, TimeOut, ValidatedBy) VALUES (?, ?, ?, ?, ?)',
+        [studentId, today, currentTime, null, 1] // Using admin user ID 1 as validator
+      );
+      
+      // Log successful operation
+      await pool.query(
+        'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+        [studentId, deviceId, 'verify', 'success', req.ip]
+      );
+      
+      // Try to fetch parent contact and send email for Time In
+      try {
+        const [rows] = await pool.query(
+          `SELECT al.AttendanceID, al.StudentID, al.Date, al.TimeIn, al.TimeOut,
+                  s.FullName, s.GradeLevel, sec.SectionName as Section,
+                  p.ContactInfo as ParentContact,
+                  ua.Username as ParentEmail
+           FROM attendancelog al
+           LEFT JOIN studentrecord s ON s.StudentID = al.StudentID
+           LEFT JOIN section sec ON sec.SectionID = s.SectionID
+           LEFT JOIN parent p ON p.ParentID = s.ParentID
+           LEFT JOIN useraccount ua ON ua.UserID = p.UserID
+           WHERE al.StudentID = ? AND DATE(al.Date) = ?
+           ORDER BY al.AttendanceID DESC LIMIT 1`,
+          [studentId, today]
+        );
+        const row = rows[0] || null;
+        if (row) {
+          const parentEmail = row.ParentEmail || row.ParentContact || null;
+          if (parentEmail) {
+            const { subject, html } = renderAttendanceEmail({
+              studentName: row.FullName,
+              date: row.Date,
+              timeIn: currentTime,
+              timeOut: null,
+            });
+            // Fire-and-forget; do not block API
+            sendEmail({ to: parentEmail, subject, html }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        // non-fatal
+        console.error('Fingerprint timein email send failed:', e?.message || e);
+      }
+
+      return res.json({
+        success: true,
+        message: 'Time in recorded',
+        student: {
+          id: student.StudentID,
+          name: student.FullName,
+          grade: student.GradeLevel
+        },
+        action: 'timein'
+      });
+    }
+    
+  } catch (error) {
+    console.error('Fingerprint verification error:', error);
+    
+    // Log error (StudentID is NULL if student doesn't exist)
+    await pool.query(
+      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, ErrorMessage, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?, ?)',
+      [null, deviceId, 'verify', 'error', error.message, req.ip]
+    );
+    
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Enroll new fingerprint
+router.post('/enroll', async (req, res) => {
+  const { studentId, templateData } = req.body;
+  const deviceId = req.deviceId;
+  const startTime = Date.now();
+  
+  try {
+    if (!studentId || !templateData) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student ID and template data are required'
+      });
+    }
+    
+    // Check if student exists
+    const [students] = await pool.query(
+      'SELECT StudentID, FullName FROM studentrecord WHERE StudentID = ?',
+      [studentId]
+    );
+    
+    if (students.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+    
+    // Convert template data to buffer
+    const templateBuffer = Buffer.from(templateData, 'base64');
+    
+    // Update student record with fingerprint template
+    await pool.query(
+      'UPDATE studentrecord SET FingerprintTemplate = ? WHERE StudentID = ?',
+      [templateBuffer, studentId]
+    );
+    
+    // Log successful enrollment
+    await pool.query(
+      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+      [studentId, deviceId, 'enroll', 'success', req.ip]
+    );
+    
+    res.json({
+      success: true,
+      message: 'Fingerprint enrolled successfully',
+      student: {
+        id: students[0].StudentID,
+        name: students[0].FullName
+      }
+    });
+    
+  } catch (error) {
+    console.error('Fingerprint enrollment error:', error);
+    
+    // Log error (StudentID is NULL if student doesn't exist)
+    await pool.query(
+      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, ErrorMessage, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?, ?)',
+      [null, deviceId, 'enroll', 'error', error.message, req.ip]
+    );
+    
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Delete fingerprint
+router.delete('/delete/:studentId', async (req, res) => {
+  const { studentId } = req.params;
+  const deviceId = req.deviceId;
+  const startTime = Date.now();
+  
+  try {
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student ID is required'
+      });
+    }
+    
+    // Check if student exists
+    const [students] = await pool.query(
+      'SELECT StudentID, FullName FROM studentrecord WHERE StudentID = ?',
+      [studentId]
+    );
+    
+    if (students.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+    
+    // Clear fingerprint template
+    await pool.query(
+      'UPDATE studentrecord SET FingerprintTemplate = NULL WHERE StudentID = ?',
+      [studentId]
+    );
+    
+    // Log successful deletion
+    await pool.query(
+      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+      [studentId, deviceId, 'delete', 'success', req.ip]
+    );
+    
+    res.json({
+      success: true,
+      message: 'Fingerprint deleted successfully',
+      student: {
+        id: students[0].StudentID,
+        name: students[0].FullName
+      }
+    });
+    
+  } catch (error) {
+    console.error('Fingerprint deletion error:', error);
+    
+    // Log error (StudentID is NULL if student doesn't exist)
+    await pool.query(
+      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, ErrorMessage, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?, ?)',
+      [null, deviceId, 'delete', 'error', error.message, req.ip]
+    );
+    
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+export default router;

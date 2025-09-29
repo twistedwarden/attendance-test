@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { defineConfig} from 'vite';
+=======
+import { defineConfig } from 'vite';
+>>>>>>> 5857bcd (ratbu)
 import react from '@vitejs/plugin-react';
 
 // https://vitejs.dev/config/
