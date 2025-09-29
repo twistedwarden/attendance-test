@@ -7,6 +7,7 @@ dotenv.config();
 
 // Database connection pool
 let pool;
+let databaseConfigured = false;
 
 // Initialize database connection
 const initializeDatabase = async () => {
@@ -17,6 +18,14 @@ const initializeDatabase = async () => {
     const user = process.env.MYSQLUSER || process.env.DB_USER || 'root';
     const password = process.env.MYSQLPASSWORD || process.env.DB_PASSWORD;
     const database = process.env.MYSQLDATABASE || process.env.DB_NAME || 'attendance';
+
+    // If no password and no Railway-provided creds, assume DB is not configured in this env
+    if (!password && !process.env.MYSQLHOST && !process.env.DB_HOST) {
+      console.warn('⚠️  Database credentials not provided. Server will start without DB.');
+      console.warn('    Set MYSQLHOST/MYSQLUSER/MYSQLPASSWORD/MYSQLDATABASE (Railway) or DB_* envs.');
+      databaseConfigured = false;
+      return; // Skip DB init to avoid crashing the process
+    }
 
     pool = mysql.createPool({
       host,
@@ -33,6 +42,7 @@ const initializeDatabase = async () => {
     const connection = await pool.getConnection();
     console.log('✅ Database connected successfully');
     connection.release();
+    databaseConfigured = true;
 
     // Ensure OTP storage table exists
     await ensureOtpStorage();
@@ -44,7 +54,9 @@ const initializeDatabase = async () => {
     await initializeDefaultUsers();
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
-    throw error;
+    console.warn('⚠️  Continuing to start server without an active database connection.');
+    databaseConfigured = false;
+    // Do not throw here to prevent the whole server from crashing during deploy
   }
 };
 
@@ -1349,4 +1361,5 @@ export const setStudentStatus = async (studentId, status) => {
 initializeDatabase();
 
 // Export the pool for other modules that might need it
-export { pool }; 
+export { pool };
+export const isDatabaseConfigured = () => databaseConfigured;
