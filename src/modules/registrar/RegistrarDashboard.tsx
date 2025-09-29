@@ -7,10 +7,7 @@ import StudentManagement from './StudentManagement';
 import RegistrarReports from './RegistrarReports';
 import AccountSettings from '../admin/components/AccountSettings';
 import RegistrarOverview from './RegistrarOverview';
-<<<<<<< HEAD
-=======
 import ESP32Control from './ESP32Control';
->>>>>>> 5857bcd (ratbu)
 
 export default function RegistrarDashboard() {
   const { user } = useAuth();
@@ -33,11 +30,8 @@ export default function RegistrarDashboard() {
         return <EnrollmentReview />;
       case 'students':
         return <StudentManagement />;
-<<<<<<< HEAD
-=======
       case 'esp32':
         return <ESP32Control />;
->>>>>>> 5857bcd (ratbu)
       case 'reports':
         return <RegistrarReports />;
       case 'settings':

@@ -36,13 +36,10 @@ const initializeDatabase = async () => {
 
     // Ensure OTP storage table exists
     await ensureOtpStorage();
-
-<<<<<<< HEAD
-=======
+    
     // Ensure fingerprint mapping table exists
     await ensureFingerprintMapping();
 
->>>>>>> 5857bcd (ratbu)
     // Initialize with default users if table is empty
     await initializeDefaultUsers();
   } catch (error) {
@@ -68,8 +65,6 @@ const ensureOtpStorage = async () => {
   }
 };
 
-<<<<<<< HEAD
-=======
 // Maintain a normalized mapping of StudentID to FingerprintID
 const ensureFingerprintMapping = async () => {
   try {
@@ -91,7 +86,6 @@ const ensureFingerprintMapping = async () => {
   }
 };
 
->>>>>>> 5857bcd (ratbu)
 // Initialize default users
 const initializeDefaultUsers = async () => {
   try {
