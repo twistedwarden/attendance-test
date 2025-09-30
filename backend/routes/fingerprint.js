@@ -1,5 +1,6 @@
 import express from 'express';
 import { pool } from '../config/database.js';
+import { createSubjectAttendance } from '../config/database.js';
 import crypto from 'crypto';
 import { sendEmail, renderAttendanceEmail } from '../config/email.js';
 
@@ -115,6 +116,61 @@ router.post('/verify-id', async (req, res) => {
         [currentTime, studentId, today]
       );
       
+      // If timing out early, mark upcoming classes as Absent for the rest of the day
+      try {
+        const [remainingSchedules] = await pool.query(`
+          SELECT 
+            ts.SubjectID,
+            ts.TimeIn,
+            ts.TimeOut,
+            ts.GracePeriod
+          FROM studentschedule ss
+          JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+          WHERE ss.StudentID = ? 
+            AND ts.DayOfWeek = CASE DAYNAME(?)
+              WHEN 'Monday' THEN 'Mon'
+              WHEN 'Tuesday' THEN 'Tue'
+              WHEN 'Wednesday' THEN 'Wed'
+              WHEN 'Thursday' THEN 'Thu'
+              WHEN 'Friday' THEN 'Fri'
+              WHEN 'Saturday' THEN 'Sat'
+              WHEN 'Sunday' THEN 'Sun'
+            END
+            AND ts.TimeIn >= ?
+        `, [studentId, today, currentTime]);
+
+        for (const schedule of remainingSchedules) {
+          try {
+            const [existing] = await pool.query(
+              `SELECT SubjectAttendanceID, Status FROM subjectattendance
+               WHERE StudentID = ? AND SubjectID = ? AND Date = ? LIMIT 1`,
+              [studentId, schedule.SubjectID, today]
+            );
+            if (existing.length === 0) {
+              await createSubjectAttendance({
+                studentId,
+                subjectId: schedule.SubjectID,
+                date: today,
+                status: 'Absent',
+                validatedBy: null
+              });
+            } else {
+              const currentStatus = (existing[0].Status || '').toLowerCase();
+              if (currentStatus !== 'excused' && currentStatus !== 'absent') {
+                await pool.query(
+                  `UPDATE subjectattendance SET Status = ?, ValidatedBy = ? WHERE SubjectAttendanceID = ?`,
+                  ['Absent', null, existing[0].SubjectAttendanceID]
+                );
+              }
+            }
+          } catch (e) {
+            console.error('Failed to mark remaining subject as absent on early TimeOut:', e);
+          }
+        }
+      } catch (schedErr) {
+        console.error('Error checking remaining schedules on TimeOut:', schedErr);
+      }
+
       // Log successful operation
       await pool.query(
         "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?)",
@@ -207,6 +263,72 @@ router.post('/verify-id', async (req, res) => {
         [studentId, deviceId, 'verify', 'success', req.ip]
       );
       
+      // Create subject-level attendance for today's schedules (Time In event only)
+      try {
+        const [studentSchedules] = await pool.query(`
+          SELECT 
+            ts.ScheduleID,
+            ts.SubjectID,
+            ts.TimeIn,
+            ts.TimeOut,
+            ts.GracePeriod,
+            ts.DayOfWeek
+          FROM studentschedule ss
+          JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+          WHERE ss.StudentID = ? 
+            AND ts.DayOfWeek = CASE DAYNAME(?)
+              WHEN 'Monday' THEN 'Mon'
+              WHEN 'Tuesday' THEN 'Tue'
+              WHEN 'Wednesday' THEN 'Wed'
+              WHEN 'Thursday' THEN 'Thu'
+              WHEN 'Friday' THEN 'Fri'
+              WHEN 'Saturday' THEN 'Sat'
+              WHEN 'Sunday' THEN 'Sun'
+            END
+        `, [studentId, today]);
+
+        // Helper to add minutes to HH:MM
+        const addMinutes = (hhmm, minutes) => {
+          try {
+            const [h, m] = String(hhmm).split(':').map(n => parseInt(n, 10));
+            const d = new Date(0, 0, 0, h || 0, m || 0, 0, 0);
+            d.setMinutes(d.getMinutes() + (Number.isFinite(minutes) ? minutes : 0));
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            return `${hh}:${mm}`;
+          } catch {
+            return hhmm;
+          }
+        };
+
+        for (const schedule of studentSchedules) {
+          try {
+            const scheduledIn = String(schedule.TimeIn).slice(0,5);
+            const scheduledOut = String(schedule.TimeOut).slice(0,5);
+            const grace = Number(schedule.GracePeriod) || 15;
+            const latestOnTime = addMinutes(scheduledIn, grace);
+
+            let finalStatus = 'Present';
+            if (currentTime > latestOnTime && currentTime <= scheduledOut) {
+              finalStatus = 'Late';
+            }
+
+            await createSubjectAttendance({
+              studentId,
+              subjectId: schedule.SubjectID,
+              date: today,
+              status: finalStatus,
+              validatedBy: null,
+              timeIn: currentTime
+            });
+          } catch (subjectErr) {
+            console.error('Subject attendance creation error:', subjectErr);
+          }
+        }
+      } catch (schedErr) {
+        console.error('Schedule lookup for subject attendance failed:', schedErr);
+      }
+
       // Create notifications: parent and admin about time in
       try {
         const [recipients] = await pool.query(
