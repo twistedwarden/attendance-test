@@ -119,7 +119,10 @@ router.get('/overview', authenticateToken, requireRole(['registrar', 'admin']), 
 router.get('/enrollments', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
   try {
     const { status = 'all', page = 1, limit = 10, search = '' } = req.query;
-    const offset = (page - 1) * limit;
+    // Sanitize pagination numbers and inline for LIMIT/OFFSET to avoid MySQL param issues
+    const pageNum = Math.max(1, parseInt(String(page)) || 1);
+    const limitNum = Math.max(1, Math.min(100, parseInt(String(limit)) || 10));
+    const offsetNum = (pageNum - 1) * limitNum;
 
     let whereClause = '';
     let params = [];
@@ -135,7 +138,7 @@ router.get('/enrollments', authenticateToken, requireRole(['registrar', 'admin']
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
-    const query = `
+    let query = `
       SELECT 
         sr.StudentID as id,
         sr.FullName as studentName,
@@ -171,10 +174,9 @@ router.get('/enrollments', authenticateToken, requireRole(['registrar', 'admin']
       LEFT JOIN section sec ON sr.SectionID = sec.SectionID
       ${whereClause}
       ORDER BY sr.StudentID DESC
-      LIMIT ? OFFSET ?
     `;
-
-    params.push(parseInt(limit), parseInt(offset));
+    // Inline sanitized numbers for LIMIT/OFFSET
+    query += `\n      LIMIT ${limitNum} OFFSET ${offsetNum}`;
 
     const [enrollments] = await pool.execute(query, params);
 
@@ -186,9 +188,9 @@ router.get('/enrollments', authenticateToken, requireRole(['registrar', 'admin']
       ${whereClause}
     `;
 
-    const [countResult] = await pool.execute(countQuery, params.slice(0, -2));
+    const [countResult] = await pool.execute(countQuery, params);
     const total = countResult[0].total;
-    const pages = Math.ceil(total / limit);
+    const pages = Math.ceil(total / limitNum);
 
     res.json({
       data: enrollments.map(enrollment => ({
@@ -198,8 +200,8 @@ router.get('/enrollments', authenticateToken, requireRole(['registrar', 'admin']
         reviewDate: enrollment.reviewDate ? new Date(enrollment.reviewDate).toISOString() : null
       })),
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit: limitNum,
         total,
         pages
       }
