@@ -654,6 +654,7 @@ router.get('/subject-attendance/:studentId', authenticateToken, requireRole(['pa
   try {
     const { studentId } = req.params;
     const { limit = 30 } = req.query;
+    const limitInt = Math.min(Math.max(parseInt(limit, 10) || 30, 1), 500);
     const parentId = req.user.parentId;
 
     // Verify the student belongs to this parent
