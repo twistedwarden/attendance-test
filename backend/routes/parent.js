@@ -281,6 +281,7 @@ router.get('/messages', authenticateToken, requireRole(['parent']), async (req, 
     const userId = req.user.userId; // parent user id
     const parentId = req.user.parentId; // parent entity id
     const limit = Math.min(parseInt(req.query.limit || '100', 10), 200);
+    const limitInt = Math.min(Math.max(limit || 100, 1), 500);
 
     // Incoming: teacher -> parent
     const [incomingRows] = await pool.execute(
@@ -288,8 +289,8 @@ router.get('/messages', authenticateToken, requireRole(['parent']), async (req, 
        FROM notification
        WHERE RecipientID = ? AND Message LIKE '[TEACHER_MSG:%'
        ORDER BY DateSent DESC
-       LIMIT ?`,
-      [userId, limit]
+       LIMIT ${limitInt}`,
+      [userId]
     );
 
     // Outgoing: parent -> teacher (find by message tag, recipient varies)
@@ -298,8 +299,8 @@ router.get('/messages', authenticateToken, requireRole(['parent']), async (req, 
        FROM notification
        WHERE Message LIKE ?
        ORDER BY DateSent DESC
-       LIMIT ?`,
-      [`[PARENT_MSG:${userId}:%`, limit]
+       LIMIT ${limitInt}`,
+      [`[PARENT_MSG:${userId}:%`]
     );
 
     // Parse metadata header
@@ -691,8 +692,8 @@ router.get('/subject-attendance/:studentId', authenticateToken, requireRole(['pa
        LEFT JOIN useraccount ua ON ua.UserID = ts.TeacherID
        WHERE sa.StudentID = ?
        ORDER BY sa.Date DESC, sa.CreatedAt DESC
-       LIMIT ?`,
-      [studentId, parseInt(limit)]
+       LIMIT ${limitInt}`,
+      [studentId]
     );
 
     // Group attendance by subject
@@ -804,8 +805,8 @@ router.get('/excuse-letters', authenticateToken, requireRole(['parent']), async 
       params.push(status.toLowerCase());
     }
 
-    query += ' ORDER BY el.DateFiled DESC LIMIT ?';
-    params.push(parseInt(limit));
+    const limitInt = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
+    query += ` ORDER BY el.DateFiled DESC LIMIT ${limitInt}`;
 
     const [rows] = await pool.execute(query, params);
 

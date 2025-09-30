@@ -328,6 +328,8 @@ router.get('/devices/:deviceId/logs', async (req, res) => {
   try {
     const { deviceId } = req.params;
     const { limit = 50, offset = 0 } = req.query;
+    const limitInt = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
+    const offsetInt = Math.max(parseInt(offset, 10) || 0, 0);
     
     const [logs] = await pool.query(`
       SELECT 
@@ -337,8 +339,8 @@ router.get('/devices/:deviceId/logs', async (req, res) => {
       LEFT JOIN studentrecord sr ON fl.StudentID = sr.StudentID
       WHERE fl.ESP32DeviceID = ?
       ORDER BY fl.Timestamp DESC
-      LIMIT ? OFFSET ?
-    `, [deviceId, parseInt(limit), parseInt(offset)]);
+      LIMIT ${limitInt} OFFSET ${offsetInt}
+    `, [deviceId]);
     
     const [totalCount] = await pool.query(
       'SELECT COUNT(*) as count FROM fingerprint_log WHERE ESP32DeviceID = ?',
@@ -350,8 +352,8 @@ router.get('/devices/:deviceId/logs', async (req, res) => {
       data: logs,
       pagination: {
         total: totalCount[0].count,
-        limit: parseInt(limit),
-        offset: parseInt(offset)
+        limit: limitInt,
+        offset: offsetInt
       }
     });
   } catch (error) {

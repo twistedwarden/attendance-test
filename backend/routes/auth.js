@@ -604,6 +604,7 @@ router.get('/parent/attendance/:studentId', authenticateToken, async (req, res) 
   try {
     const { studentId } = req.params;
     const { limit = 30 } = req.query;
+    const limitInt = Math.min(Math.max(parseInt(limit, 10) || 30, 1), 500);
     const userId = req.user.userId;
     
     // Verify parent has access to this student
@@ -625,8 +626,8 @@ router.get('/parent/attendance/:studentId', authenticateToken, async (req, res) 
        FROM subjectattendance sa 
        WHERE sa.StudentID = ? 
        ORDER BY sa.Date DESC 
-       LIMIT ?`,
-      [studentId, parseInt(limit)]
+       LIMIT ${limitInt}`,
+      [studentId]
     );
     
     res.json({
