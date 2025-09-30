@@ -93,6 +93,7 @@ router.get('/attendance/:studentId', authenticateToken, requireRole(['parent']),
   try {
     const { studentId } = req.params;
     const { limit = 30 } = req.query;
+    const limitInt = Math.min(Math.max(parseInt(limit, 10) || 30, 1), 500);
     const parentId = req.user.parentId;
 
     // Verify the student belongs to this parent
@@ -112,8 +113,8 @@ router.get('/attendance/:studentId', authenticateToken, requireRole(['parent']),
        FROM attendancelog al
        WHERE al.StudentID = ?
        ORDER BY al.Date DESC
-       LIMIT ?`,
-      [studentId, parseInt(limit)]
+       LIMIT ${limitInt}`,
+      [studentId]
     );
 
     // Get subject attendance records with actual time data
@@ -124,8 +125,8 @@ router.get('/attendance/:studentId', authenticateToken, requireRole(['parent']),
        LEFT JOIN attendancelog al ON al.StudentID = sa.StudentID AND al.Date = sa.Date
        WHERE sa.StudentID = ?
        ORDER BY sa.Date DESC
-       LIMIT ?`,
-      [studentId, parseInt(limit)]
+       LIMIT ${limitInt}`,
+      [studentId]
     );
 
     // Combine and format the records
