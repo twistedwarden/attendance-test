@@ -493,7 +493,7 @@ router.delete('/devices/:deviceId/fingerprints/:studentId', async (req, res) => 
         fingerprintId = parseInt(mapped[0].FingerprintID);
       } else {
         const [legacy] = await pool.query(
-          'SELECT CAST(FingerprintTemplate AS UNSIGNED) as fid FROM studentrecord WHERE StudentID = ? AND FingerprintTemplate IS NOT NULL AND FingerprintTemplate != \''\'',
+          "SELECT CAST(FingerprintTemplate AS UNSIGNED) as fid FROM studentrecord WHERE StudentID = ? AND FingerprintTemplate IS NOT NULL AND FingerprintTemplate != ''",
           [studentId]
         );
         if (legacy.length > 0 && !isNaN(legacy[0].fid)) {
