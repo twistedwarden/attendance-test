@@ -5,6 +5,17 @@ import { sendEmail, renderAttendanceEmail } from '../config/email.js';
 
 const router = express.Router();
 
+// Helpers to get Philippines time (Asia/Manila)
+const getPhilippinesNow = () => {
+  // Use server time as base, format with Asia/Manila
+  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' });
+  const timeFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const parts = formatter.formatToParts(new Date());
+  const date = `${parts.find(p=>p.type==='year').value}-${parts.find(p=>p.type==='month').value}-${parts.find(p=>p.type==='day').value}`;
+  const time = timeFormatter.format(new Date());
+  return { date, time };
+};
+
 // API Key validation middleware
 const validateApiKey = (req, res, next) => {
   const apiKey = req.headers['x-api-key'];
@@ -89,8 +100,7 @@ router.post('/verify-id', async (req, res) => {
     }
     
     const student = students[0];
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD format
-    const currentTime = new Date().toTimeString().slice(0, 8);
+    const { date: today, time: currentTime } = getPhilippinesNow();
     
     // Check if attendance already recorded today (using DATE() function to compare only date part)
     const [existingAttendance] = await pool.query(
@@ -107,7 +117,7 @@ router.post('/verify-id', async (req, res) => {
       
       // Log successful operation
       await pool.query(
-        'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+        "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?)",
         [studentId, deviceId, 'verify', 'success', req.ip]
       );
       
@@ -165,7 +175,7 @@ router.post('/verify-id', async (req, res) => {
       
       // Log successful operation
       await pool.query(
-        'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+        "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?)",
         [studentId, deviceId, 'verify', 'success', req.ip]
       );
       
@@ -221,7 +231,7 @@ router.post('/verify-id', async (req, res) => {
     
     // Log error (StudentID is NULL if student doesn't exist)
     await pool.query(
-      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, ErrorMessage, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?, ?)',
+      "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, ErrorMessage, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?, ?)",
       [null, deviceId, 'verify', 'error', error.message, req.ip]
     );
     
@@ -270,7 +280,7 @@ router.post('/enroll', async (req, res) => {
     
     // Log successful enrollment
     await pool.query(
-      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+      "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?)",
       [studentId, deviceId, 'enroll', 'success', req.ip]
     );
     
@@ -288,7 +298,7 @@ router.post('/enroll', async (req, res) => {
     
     // Log error (StudentID is NULL if student doesn't exist)
     await pool.query(
-      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, ErrorMessage, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?, ?)',
+      "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, ErrorMessage, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?, ?)",
       [null, deviceId, 'enroll', 'error', error.message, req.ip]
     );
     
@@ -334,7 +344,7 @@ router.delete('/delete/:studentId', async (req, res) => {
     
     // Log successful deletion
     await pool.query(
-      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+      "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?)",
       [studentId, deviceId, 'delete', 'success', req.ip]
     );
     
@@ -352,7 +362,7 @@ router.delete('/delete/:studentId', async (req, res) => {
     
     // Log error (StudentID is NULL if student doesn't exist)
     await pool.query(
-      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, ErrorMessage, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?, ?)',
+      "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, ErrorMessage, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?, ?)",
       [null, deviceId, 'delete', 'error', error.message, req.ip]
     );
     

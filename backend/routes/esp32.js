@@ -112,7 +112,7 @@ router.get('/devices/:deviceId/status', async (req, res) => {
         0 as avgResponseTime
       FROM fingerprint_log 
       WHERE ESP32DeviceID = ? 
-      AND Timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+      AND Timestamp >= DATE_SUB(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), INTERVAL 24 HOUR)
     `, [deviceId]);
     
     res.json({
@@ -140,7 +140,7 @@ router.post('/devices/:deviceId/status', async (req, res) => {
     
     // Update device status and last seen
     await pool.query(
-      'UPDATE esp32_devices SET Status = ?, LastSeen = NOW(), UpdatedAt = NOW(), WiFiSSID = COALESCE(?, WiFiSSID) WHERE DeviceID = ?',
+      "UPDATE esp32_devices SET Status = ?, LastSeen = CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), UpdatedAt = CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), WiFiSSID = COALESCE(?, WiFiSSID) WHERE DeviceID = ?",
       [status || 'active', wifiSSID || null, deviceId]
     );
     
@@ -186,7 +186,7 @@ router.put('/devices/:deviceId/status', async (req, res) => {
     updateValues.push(deviceId);
     
     await pool.query(
-      `UPDATE esp32_devices SET ${updateFields.join(', ')}, UpdatedAt = NOW() WHERE DeviceID = ?`,
+      `UPDATE esp32_devices SET ${updateFields.join(', ')}, UpdatedAt = CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00') WHERE DeviceID = ?`,
       updateValues
     );
     
@@ -245,7 +245,7 @@ router.post('/devices/:deviceId/command', async (req, res) => {
     
     // Log the command in fingerprint_log
     await pool.query(
-      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+      "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?)",
       [null, deviceId, 'command', 'success', req.ip]
     );
     
@@ -531,7 +531,7 @@ router.delete('/devices/:deviceId/fingerprints/:studentId', async (req, res) => 
     
     // Log the deletion
     await pool.query(
-      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+      "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?)",
       [studentId, deviceId, 'delete', 'success', req.ip]
     );
     
@@ -576,7 +576,7 @@ router.delete('/devices/:deviceId/clear-fingerprints', async (req, res) => {
     
     // Log the action
     await pool.query(
-      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+      "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?)",
       [null, deviceId, 'clear', 'success', req.ip]
     );
     
@@ -635,7 +635,7 @@ router.post('/devices/:deviceId/enroll', async (req, res) => {
     
     // Log the enrollment
     await pool.query(
-      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+      "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?)",
       [studentId, deviceId, 'enroll', 'success', req.ip]
     );
     
@@ -683,7 +683,7 @@ router.delete('/devices/:deviceId/fingerprints/:studentId', async (req, res) => 
     
     // Log the deletion
     await pool.query(
-      'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
+      "INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), ?)",
       [studentId, deviceId, 'delete', 'success', req.ip]
     );
     
