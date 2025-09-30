@@ -2639,8 +2639,11 @@ router.get('/student-subjects/stats', async (req, res) => {
 // Get all student schedule assignments
 router.get('/student-schedules', async (req, res) => {
     try {
-        const { studentId, scheduleId, page = 1, limit = 50 } = req.query;
-        const offset = (page - 1) * limit;
+        const { studentId, scheduleId } = req.query;
+        // Sanitize pagination inputs as integers
+        const pageNum = Math.max(1, parseInt(req.query.page ?? '1', 10) || 1);
+        const limitNum = Math.max(1, parseInt(req.query.limit ?? '50', 10) || 50);
+        const offsetNum = (pageNum - 1) * limitNum;
 
         let whereConditions = [];
         let params = [];
@@ -2656,7 +2659,7 @@ router.get('/student-schedules', async (req, res) => {
 
         const whereClause = whereConditions.length > 0 ? 'WHERE ' + whereConditions.join(' AND ') : '';
 
-        const query = `
+        let query = `
             SELECT 
                 ss.StudentScheduleID as id,
                 ss.StudentID as studentId,
@@ -2679,10 +2682,10 @@ router.get('/student-schedules', async (req, res) => {
             LEFT JOIN section sec ON sec.SectionID = ts.SectionID
             ${whereClause}
             ORDER BY sr.FullName, s.SubjectName
-            LIMIT ? OFFSET ?
         `;
 
-        params.push(Number(limit), offset);
+        // Inline sanitized numeric LIMIT/OFFSET to avoid MySQL prepared stmt quirks
+        query += `\n            LIMIT ${limitNum} OFFSET ${offsetNum}`;
 
         const [rows] = await pool.execute(query, params);
 
@@ -2698,7 +2701,8 @@ router.get('/student-schedules', async (req, res) => {
             ${whereClause}
         `;
 
-        const [countResult] = await pool.execute(countQuery, params.slice(0, -2));
+        // Pass only WHERE params to count (params currently contains only WHERE params)
+        const [countResult] = await pool.execute(countQuery, params);
         const total = countResult[0].total;
 
         res.json({
@@ -2706,9 +2710,9 @@ router.get('/student-schedules', async (req, res) => {
             data: rows,
             pagination: {
                 total,
-                page: Number(page),
-                limit: Number(limit),
-                pages: Math.ceil(total / limit)
+                page: pageNum,
+                limit: limitNum,
+                pages: Math.ceil(total / limitNum)
             }
         });
     } catch (error) {

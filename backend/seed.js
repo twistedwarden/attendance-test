@@ -577,6 +577,42 @@ const insertAuditTrail = async (pool, userIds) => {
 	}
 };
 
+// Seed ESP32 devices used by fingerprint attendance scanners
+const insertESP32Devices = async (pool) => {
+	const hasTable = await tableExists(pool, 'esp32_devices');
+	if (!hasTable) return;
+
+	const devices = [
+		{ DeviceID: 'ESP32-01', DeviceName: 'Main Entrance Scanner', Location: 'Main Entrance', Status: 'active' },
+	];
+
+	// Determine available columns for backward compatibility
+	const hasStatus = await hasColumn(pool, 'esp32_devices', 'Status');
+	const hasLocation = await hasColumn(pool, 'esp32_devices', 'Location');
+	const hasUpdatedAt = await hasColumn(pool, 'esp32_devices', 'UpdatedAt');
+
+	for (const d of devices) {
+		const [existing] = await pool.query('SELECT 1 FROM esp32_devices WHERE DeviceID = ? LIMIT 1', [d.DeviceID]);
+		if (existing.length === 0) {
+			const cols = ['DeviceID', 'DeviceName'];
+			const vals = [d.DeviceID, d.DeviceName];
+			if (hasLocation) { cols.push('Location'); vals.push(d.Location); }
+			if (hasStatus) { cols.push('Status'); vals.push(d.Status); }
+			const placeholders = cols.map(() => '?').join(', ');
+			await pool.query(`INSERT INTO esp32_devices (${cols.join(', ')}) VALUES (${placeholders})`, vals);
+		} else {
+			// Update core fields to match seed data
+			const sets = ['DeviceName = ?'];
+			const params = [d.DeviceName];
+			if (hasLocation) { sets.push('Location = ?'); params.push(d.Location); }
+			if (hasStatus) { sets.push('Status = ?'); params.push(d.Status); }
+			if (hasUpdatedAt) { sets.push('UpdatedAt = NOW()'); }
+			params.push(d.DeviceID);
+			await pool.query(`UPDATE esp32_devices SET ${sets.join(', ')} WHERE DeviceID = ?`, params);
+		}
+	}
+};
+
 const seed = async () => {
 	const pool = await getPool();
 	try {
@@ -621,6 +657,7 @@ const seed = async () => {
 		await insertTeacherRecords(pool, userIds);
 		await insertAdminRecords(pool, userIds);
 		await insertRegistrarRecords(pool, userIds);
+		await insertESP32Devices(pool);
 		await insertStudentSchedules(pool, studentIds, userIds, subjectIds, sectionIds);
 		// Attendance seeding disabled per request:
 		// await insertAttendanceLogs(pool, studentIds, adminId);
