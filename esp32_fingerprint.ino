@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <WiFiMulti.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <Adafruit_Fingerprint.h>
@@ -7,6 +8,11 @@
 
 const char* ssid = "ZTE_2.4G_fuPrrr";
 const char* password = "DREAMERS";
+// Optional additional networks (leave empty if unused)
+const char* ssid2 = "ASHBORN_2.4G";      const char* pass2 = "Ww2TWKy2";
+const char* ssid3 = "TestWifi";      const char* pass3 = "12345678";
+const char* ssid4 = "FOOTHILLS";      const char* pass4 = "FCSQC123";
+const char* ssid5 = "RANDOM";      const char* pass5 = "RANDOM123";
 
 // Fingerprint API (Node) endpoint base (Railway public URL over HTTPS)
 String apiUrl = "https://attendance-test-production.up.railway.app/api/fingerprint/verify-id"; // Fingerprint verification endpoint
@@ -36,6 +42,7 @@ const unsigned long enrollmentTimeout = 30000; // 30 seconds timeout for enrollm
 
 HardwareSerial mySerial(2);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
+WiFiMulti wifiMulti;
 
 // OLED 128x64 (I2C, address 0x3C)
 #define SCREEN_WIDTH 128
@@ -48,6 +55,10 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2_ssd(U8G2_R0, /* reset=*/ U8X8_PIN_NONE,
 U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2_sh(U8G2_R0, /* reset=*/ U8X8_PIN_NONE, /* scl=*/ OLED_SCL, /* sda=*/ OLED_SDA);
 bool displayReady = false;
 uint8_t displayDriver = 0; // 1=SSD1306, 2=SH1106
+unsigned long lastOledActivityMs = 0;
+bool idleScreenShown = false; // legacy flag (kept for compatibility)
+unsigned long lastIdleAnimMs = 0; // last time the idle animation ran
+uint8_t idlePhase = 0; // 0 = INDEX typing, 1 = fingerprint icon
 
 // Buttons for actions (use GPIOs that are safe at boot)
 #define BTN_ENROLL 32
@@ -70,6 +81,10 @@ void beep_double() { buzzTone(2200, 150); delay(100); buzzTone(2200, 150); }
 
 void oledPrint(const String &line1, const String &line2 = "", const String &line3 = "") {
 if (!displayReady) return; // Guard against calls before begin()
+lastOledActivityMs = millis();
+idleScreenShown = false;
+lastIdleAnimMs = lastOledActivityMs; // push out the next idle animation
+idlePhase = 0; // reset cycle when UI updates
 if (displayDriver == 1) {
 u8g2_ssd.clearBuffer();
 // Use larger font for better visibility
@@ -128,6 +143,136 @@ for (int i = 0; i < cycles; i++) {
 }
 }
 
+// Draw centered "INDEX" with typewriter animation
+void drawIdleFingerprint() {
+  if (!displayReady) return;
+  const char* text = "INDEX";
+  const int steps = 5; // number of letters
+  const int frameMs = 120; // typing speed
+  if (displayDriver == 1) {
+    u8g2_ssd.setFont(u8g2_font_logisoso32_tf);
+    int fullW = u8g2_ssd.getStrWidth(text);
+    int x = (SCREEN_WIDTH - fullW) / 2;
+    int y = 46; // moved slightly down for 32px font
+    for (int i = 1; i <= steps; i++) {
+      u8g2_ssd.clearBuffer();
+      String part = String(text).substring(0, i);
+      u8g2_ssd.drawStr(x, y, part.c_str());
+      u8g2_ssd.sendBuffer();
+      delay(frameMs);
+    }
+  } else if (displayDriver == 2) {
+    u8g2_sh.setFont(u8g2_font_logisoso32_tf);
+    int fullW = u8g2_sh.getStrWidth(text);
+    int x = (SCREEN_WIDTH - fullW) / 2;
+    int y = 46;
+    for (int i = 1; i <= steps; i++) {
+      u8g2_sh.clearBuffer();
+      String part = String(text).substring(0, i);
+      u8g2_sh.drawStr(x, y, part.c_str());
+      u8g2_sh.sendBuffer();
+      delay(frameMs);
+    }
+  }
+}
+
+// Draw a centered stylized fingerprint using concentric ellipses and masked gaps
+static void drawFancyFingerprint(u8g2_uint_t cx, u8g2_uint_t cy, bool isSSD) {
+  const uint8_t outerRx = 24;   // horizontal radius
+  const uint8_t outerRy = 30;   // vertical radius
+  const uint8_t step = 4;       // ridge spacing
+
+  // Helper lambdas to draw with the correct device
+  auto drawEllipse = [&](int rx, int ry) {
+    if (isSSD) {
+      u8g2_ssd.drawEllipse(cx, cy, rx, ry, U8G2_DRAW_ALL);
+    } else {
+      u8g2_sh.drawEllipse(cx, cy, rx, ry, U8G2_DRAW_ALL);
+    }
+  };
+  auto drawHLine = [&](int x, int y, int w, uint8_t color) {
+    if (isSSD) {
+      u8g2_ssd.setDrawColor(color);
+      u8g2_ssd.drawHLine(x, y, w);
+      u8g2_ssd.setDrawColor(1);
+    } else {
+      u8g2_sh.setDrawColor(color);
+      u8g2_sh.drawHLine(x, y, w);
+      u8g2_sh.setDrawColor(1);
+    }
+  };
+  auto drawBox = [&](int x, int y, int w, int h, uint8_t color) {
+    if (isSSD) {
+      u8g2_ssd.setDrawColor(color);
+      u8g2_ssd.drawBox(x, y, w, h);
+      u8g2_ssd.setDrawColor(1);
+    } else {
+      u8g2_sh.setDrawColor(color);
+      u8g2_sh.drawBox(x, y, w, h);
+      u8g2_sh.setDrawColor(1);
+    }
+  };
+
+  // Concentric ellipses (ridges)
+  for (int r = 0; r <= 6; r++) {
+    drawEllipse(outerRx - r * step, outerRy - r * step);
+  }
+
+  // Mask bottom to shape an oval fingertip (flat-ish bottom)
+  drawBox(cx - outerRx - 2, cy + 18, (outerRx + 2) * 2, 14, 0);
+
+  // Core loop (triangle-like void) using masks to create swirl effect
+  // Left gap
+  drawBox(cx - 20, cy - 4, 10, 8, 0);
+  // Right gap
+  drawBox(cx + 10, cy - 2, 10, 8, 0);
+  // Central slit
+  drawHLine(cx - 8, cy, 16, 0);
+
+  // Accent partial arcs (upper-left and lower-right) for realism
+  if (isSSD) {
+    u8g2_ssd.drawEllipse(cx, cy, 16, 22, U8G2_DRAW_UPPER_LEFT);
+    u8g2_ssd.drawEllipse(cx, cy, 20, 26, U8G2_DRAW_LOWER_RIGHT);
+  } else {
+    u8g2_sh.drawEllipse(cx, cy, 16, 22, U8G2_DRAW_UPPER_LEFT);
+    u8g2_sh.drawEllipse(cx, cy, 20, 26, U8G2_DRAW_LOWER_RIGHT);
+  }
+}
+
+// Draw a centered fingerprint icon (no text)
+void drawIdleIconOnly() {
+  if (!displayReady) return;
+  const int cx = SCREEN_WIDTH / 2;
+  const int cy = SCREEN_HEIGHT / 2 + 2; // slight visual center adjustment
+  if (displayDriver == 1) {
+    const int outerRy = 30;
+    const int topY = cy - outerRy;
+    const int bottomY = cy + outerRy;
+    const uint8_t frameMs = 25; // ~1.5s sweep
+    for (int y = topY; y <= bottomY; y += 2) {
+      u8g2_ssd.clearBuffer();
+      drawFancyFingerprint(cx, cy, true);
+      // scanning line
+      u8g2_ssd.drawHLine(cx - 26, y, 52);
+      u8g2_ssd.sendBuffer();
+      delay(frameMs);
+    }
+  } else if (displayDriver == 2) {
+    const int outerRy = 30;
+    const int topY = cy - outerRy;
+    const int bottomY = cy + outerRy;
+    const uint8_t frameMs = 25;
+    for (int y = topY; y <= bottomY; y += 2) {
+      u8g2_sh.clearBuffer();
+      drawFancyFingerprint(cx, cy, false);
+      // scanning line
+      u8g2_sh.drawHLine(cx - 26, y, 52);
+      u8g2_sh.sendBuffer();
+      delay(frameMs);
+    }
+  }
+}
+
 // ESP32 Control Functions
 void checkForCommands() {
   if (WiFi.status() != WL_CONNECTED) {
@@ -159,19 +304,19 @@ void checkForCommands() {
     if (response.indexOf("\"hasCommand\":true") > 0) {
       Serial.println("Command received!");
       // Extract command from JSON
-      if (response.indexOf("\"command\":\"restart\"") > 0) {
+      if (response.indexOf("\"command\"😕"restart\"") > 0) {
         Serial.println("Executing RESTART command");
         executeRestart();
-      } else if (response.indexOf("\"command\":\"reset\"") > 0) {
+      } else if (response.indexOf("\"command\"😕"reset\"") > 0) {
         Serial.println("Executing RESET command");
         executeReset();
-      } else if (response.indexOf("\"command\":\"test_connection\"") > 0) {
+      } else if (response.indexOf("\"command\"😕"test_connection\"") > 0) {
         Serial.println("Executing TEST_CONNECTION command");
         executeTestConnection();
-      } else if (response.indexOf("\"command\":\"clear_all\"") > 0) {
+      } else if (response.indexOf("\"command\"😕"clear_all\"") > 0) {
         Serial.println("Executing CLEAR_ALL command");
         executeClearAll();
-      } else if (response.indexOf("\"command\":\"enroll\"") > 0) {
+      } else if (response.indexOf("\"command\"😕"enroll\"") > 0) {
         // Extract student ID from parameters
         int studentIdStart = response.indexOf("\"studentId\":") + 12;
         int studentIdEnd = response.indexOf(",", studentIdStart);
@@ -182,7 +327,7 @@ void checkForCommands() {
           Serial.println("Executing ENROLL command for student: " + String(studentId));
           executeEnroll(studentId);
         }
-      } else if (response.indexOf("\"command\":\"delete_fingerprint\"") > 0) {
+      } else if (response.indexOf("\"command\"😕"delete_fingerprint\"") > 0) {
         // Extract student ID from parameters
         int studentIdStart = response.indexOf("\"studentId\":") + 12;
         int studentIdEnd = response.indexOf(",", studentIdStart);
@@ -251,7 +396,7 @@ void executeTestConnection() {
     beep_long();
   }
   delay(2000);
-  oledPrint("Device Ready", "Ready for scanning", "");
+  oledPrint("INDEX", "Ready for", "Scanning");
 }
 
 void testAllEndpoints() {
@@ -306,7 +451,7 @@ void executeClearAll() {
   oledPrint("All Cleared", "Complete", "");
   beep_once();
   delay(3000);
-  oledPrint("Device Ready", "Ready for scanning", "");
+  oledPrint("INDEX", "Ready for", "Scanning");
 }
 
 void executeEnroll(int studentId) {
@@ -349,7 +494,7 @@ void executeEnroll(int studentId) {
   
   enrollmentMode = false;
   delay(2000);
-  oledPrint("Device Ready", "Ready for scanning", "");
+  oledPrint("INDEX", "Ready for", "Scanning");
 }
 
 void executeDeleteFingerprint(int studentId) {
@@ -375,7 +520,7 @@ void executeDeleteFingerprint(int studentId) {
   oledPrint("Delete Complete", "Student ID: " + String(studentId), "");
   beep_once();
   delay(2000);
-  oledPrint("Device Ready", "Ready for scanning", "");
+  oledPrint("INDEX", "Ready for", "Scanning");
 }
 
 bool testConnection() {
@@ -439,10 +584,10 @@ void sendDeviceStatus() {
   http.addHeader("X-Device-ID", deviceId);
   
   String statusJson = "{";
-  statusJson += "\"status\":\"active\",";
-  statusJson += "\"lastSeen\":\"" + String(millis()) + "\",";
+  statusJson += "\"status\"😕"active\",";
+  statusJson += "\"lastSeen\"😕"" + String(millis()) + "\",";
   statusJson += "\"uptime\":" + String(millis() / 1000) + ",";
-  statusJson += "\"wifiSSID\":\"" + WiFi.SSID() + "\",";
+  statusJson += "\"wifiSSID\"😕"" + WiFi.SSID() + "\",";
   statusJson += "\"fingerprintCount\":" + String(getFingerprintCount());
   statusJson += "}";
   
@@ -480,7 +625,7 @@ void sendEnrollmentToBackend(int studentId, int fingerprintId) {
   String enrollmentJson = "{";
   enrollmentJson += "\"studentId\":" + String(studentId) + ",";
   enrollmentJson += "\"fingerprintId\":" + String(fingerprintId) + ",";
-  enrollmentJson += "\"deviceId\":\"" + String(deviceId) + "\"";
+  enrollmentJson += "\"deviceId\"😕"" + String(deviceId) + "\"";
   enrollmentJson += "}";
   
   Serial.println("Enrollment JSON: " + enrollmentJson);
@@ -561,12 +706,17 @@ pinMode(BTN_SCAN, INPUT_PULLUP);
 // Buzzer setup
 pinMode(BUZZER_PIN, OUTPUT);
 
-WiFi.begin(ssid, password);
+// Register up to 5 networks (strongest/available will be used)
+wifiMulti.addAP(ssid, password);
+if (ssid2 && *ssid2) wifiMulti.addAP(ssid2, pass2);
+if (ssid3 && *ssid3) wifiMulti.addAP(ssid3, pass3);
+if (ssid4 && *ssid4) wifiMulti.addAP(ssid4, pass4);
+if (ssid5 && *ssid5) wifiMulti.addAP(ssid5, pass5);
 
 int timeout = 0;
-while (WiFi.status() != WL_CONNECTED && timeout < 20) {
-    delay(1000);
-    Serial.println("Connecting to WiFi...");
+while (wifiMulti.run() != WL_CONNECTED && timeout < 40) {
+    delay(500);
+    Serial.println("Connecting to WiFi (multi)...");
     timeout++;
 }
 
@@ -654,6 +804,30 @@ if (id > 0) {
 } else if (id == -1) {
     // Don't print anything for no finger detected
     delay(100);  // Small delay to prevent too rapid scanning
+    // Idle animation policy:
+    // - After 5s of no UI updates, run the typewriter once
+    // - Then repeat the animation every 5s until UI updates again
+    if (displayReady) {
+      unsigned long nowMs = millis();
+      if (lastOledActivityMs == 0) {
+        lastOledActivityMs = nowMs;
+        lastIdleAnimMs = nowMs;
+      }
+      bool initialDelayElapsed = (nowMs - lastOledActivityMs) > 5000UL;
+      bool repeatDelayElapsed = (nowMs - lastIdleAnimMs) > 5000UL;
+      if (initialDelayElapsed && repeatDelayElapsed) {
+        if (idlePhase == 0) {
+          // Show INDEX typing first
+          drawIdleFingerprint();
+          idlePhase = 1;
+        } else {
+          // Then show icon only, then cycle back
+          drawIdleIconOnly();
+          idlePhase = 0;
+        }
+        lastIdleAnimMs = nowMs;
+      }
+    }
 } else {
     switch (id) {
     case -2:
@@ -787,9 +961,9 @@ if (httpResponseCode > 0) {
     if (httpResponseCode == 200) {
       // Parse response to show student name
       if (response.indexOf("\"success\":true") > 0) {
-        if (response.indexOf("\"action\":\"timein\"") > 0) {
+        if (response.indexOf("\"action\"😕"timein\"") > 0) {
           oledPrint("Time In", "Recorded");
-        } else if (response.indexOf("\"action\":\"timeout\"") > 0) {
+        } else if (response.indexOf("\"action\"😕"timeout\"") > 0) {
           oledPrint("Time Out", "Recorded");
         } else {
           oledPrint("Attendance", "Recorded");
