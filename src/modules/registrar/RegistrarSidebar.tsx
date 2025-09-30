@@ -37,13 +37,12 @@ export default function RegistrarSidebar({
 
       {/* Sidebar */}
       <div className={`
-        fixed top-0 left-0 z-50 h-screen w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out
-        lg:relative lg:translate-x-0 lg:z-auto lg:h-screen
-        ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}
+        fixed top-0 left-0 h-screen w-64 bg-white shadow-sm border-r border-gray-200 z-50 transform transition-transform duration-200 ease-in-out overflow-y-auto scrollbar-hide
+        ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between p-6 border-b border-gray-200 lg:hidden">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center">
                 <ClipboardList className="w-5 h-5 text-white" />
@@ -59,6 +58,17 @@ export default function RegistrarSidebar({
             >
               <X className="w-5 h-5 text-gray-500" />
             </button>
+          </div>
+
+          {/* Desktop Logo */}
+          <div className="hidden lg:flex items-center space-x-3 p-6 border-b border-gray-200">
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center">
+              <ClipboardList className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">Registrar</h1>
+              <p className="text-xs text-gray-500">Management Portal</p>
+            </div>
           </div>
 
           {/* User Info */}

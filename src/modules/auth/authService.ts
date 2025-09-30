@@ -172,7 +172,7 @@ export class AuthService {
         throw new Error('No authentication token');
       }
 
-      const response = await fetch(`${API_BASE_URL}/users/notifications`, {
+      const response = await fetch(`${API_BASE_URL}/auth/users/notifications`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,

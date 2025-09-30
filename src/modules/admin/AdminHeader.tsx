@@ -1,5 +1,6 @@
 import { Menu, Bell, User, LogOut } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import NotificationBell from '../shared/NotificationBell';
 
 interface AdminHeaderProps {
   onMobileMenuToggle: () => void;
@@ -28,9 +29,7 @@ export default function AdminHeader({ onMobileMenuToggle }: AdminHeaderProps) {
         {/* Right side actions */}
         <div className="flex items-center space-x-4">
           {/* Notifications */}
-          <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full">
-            <Bell className="h-6 w-6" />
-          </button>
+          <NotificationBell />
 
           {/* User menu */}
           <div className="flex items-center space-x-3">

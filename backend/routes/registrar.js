@@ -326,6 +326,22 @@ router.post('/enrollments/:id/approve', authenticateToken, requireRole(['registr
 
       await connection.commit();
 
+      // Notify parent of approval via `notification` table
+      try {
+        const [rows] = await pool.execute(
+          `SELECT ua.UserID as userId, sr.FullName as studentName
+           FROM studentrecord sr
+           JOIN parent p ON p.ParentID = sr.ParentID
+           JOIN useraccount ua ON ua.UserID = p.UserID
+           WHERE sr.StudentID = ? LIMIT 1`,
+          [id]
+        );
+        if (Array.isArray(rows) && rows.length > 0) {
+          const msg = `${rows[0].studentName} enrollment approved`;
+          await pool.execute(`INSERT INTO notification (RecipientID, Message, Status) VALUES (?, ?, 'Unread')`, [rows[0].userId, msg]);
+        }
+      } catch (_) {}
+
       // After approval, optionally assign schedules
       if (Array.isArray(scheduleIds) && scheduleIds.length > 0) {
         const values = scheduleIds.map((sid) => [id, sid, req.user.userId]);
@@ -400,6 +416,22 @@ router.post('/enrollments/:id/decline', authenticateToken, requireRole(['registr
       }
 
       await connection.commit();
+
+      // Notify parent of decline via `notification` table
+      try {
+        const [rows] = await pool.execute(
+          `SELECT ua.UserID as userId, sr.FullName as studentName
+           FROM studentrecord sr
+           JOIN parent p ON p.ParentID = sr.ParentID
+           JOIN useraccount ua ON ua.UserID = p.UserID
+           WHERE sr.StudentID = ? LIMIT 1`,
+          [id]
+        );
+        if (Array.isArray(rows) && rows.length > 0) {
+          const msg = `${rows[0].studentName} enrollment declined: ${reason}`;
+          await pool.execute(`INSERT INTO notification (RecipientID, Message, Status) VALUES (?, ?, 'Unread')`, [rows[0].userId, msg]);
+        }
+      } catch (_) {}
 
       res.json({
         success: true,

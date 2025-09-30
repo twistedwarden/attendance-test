@@ -459,6 +459,61 @@ router.get('/verify', authenticateToken, async (req, res) => {
 
 
 
+// ===== Unified user notifications =====
+// Returns latest notifications for the authenticated user from `notification` table
+router.get('/users/notifications', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const [rows] = await pool.execute(
+      `SELECT NotificationID as id, RecipientID as userId, DateSent as dateSent, Message as message, Status as status
+       FROM notification
+       WHERE RecipientID = ?
+       ORDER BY DateSent DESC
+       LIMIT 100`,
+      [userId]
+    );
+    const data = rows.map(r => ({
+      id: r.id,
+      userId: r.userId,
+      dateSent: r.dateSent,
+      message: r.message,
+      status: (r.status || 'Unread')
+    }));
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error('List user notifications error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Mark one notification as read
+router.post('/users/notifications/:id/read', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { id } = req.params;
+    await pool.execute(
+      `UPDATE notification SET Status = 'Read' WHERE NotificationID = ? AND RecipientID = ?`,
+      [id, userId]
+    );
+    return res.json({ success: true, message: 'Notification marked as read' });
+  } catch (error) {
+    console.error('Mark notification read error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Mark all as read
+router.post('/users/notifications/mark-all-read', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    await pool.execute(`UPDATE notification SET Status = 'Read' WHERE RecipientID = ? AND Status = 'Unread'`, [userId]);
+    return res.json({ success: true, message: 'All notifications marked as read' });
+  } catch (error) {
+    console.error('Mark all notifications read error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // Student enrollment (authenticated parent endpoint)
 router.post('/enroll-student', authenticateToken, requireRole(['parent']), async (req, res) => {
   try {

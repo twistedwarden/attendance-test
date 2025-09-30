@@ -46,7 +46,7 @@ export default function RegistrarDashboard() {
   }
 
   return (
-    <div className="h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-gray-50">
       <RegistrarSidebar 
         activeSection={activeSection} 
         onSectionChange={setActiveSection}
@@ -54,10 +54,10 @@ export default function RegistrarDashboard() {
         onMobileClose={closeMobileSidebar}
       />
       
-      <div className="flex-1 flex flex-col h-screen lg:ml-0">
+      <div className="lg:ml-64 flex flex-col min-h-screen">
         <RegistrarHeader onMobileMenuToggle={toggleMobileSidebar} />
         
-        <main className="flex-1 p-8 overflow-auto">
+        <main className="flex-1 p-8">
           {renderContent()}
         </main>
       </div>

@@ -121,6 +121,34 @@ router.post('/verify-id', async (req, res) => {
         [studentId, deviceId, 'verify', 'success', req.ip]
       );
       
+      // Create notifications: parent and admin about time out
+      try {
+        // Resolve parent user id for the student
+        const [recipients] = await pool.query(
+          `SELECT ua.UserID as userId
+           FROM studentrecord s
+           JOIN parent p ON p.ParentID = s.ParentID
+           JOIN useraccount ua ON ua.UserID = p.UserID
+           WHERE s.StudentID = ?
+           LIMIT 1`,
+          [studentId]
+        );
+        const parentUserId = Array.isArray(recipients) && recipients.length > 0 ? recipients[0].userId : null;
+        const [studentInfoRows] = await pool.query('SELECT FullName FROM studentrecord WHERE StudentID = ? LIMIT 1', [studentId]);
+        const studentName = Array.isArray(studentInfoRows) && studentInfoRows.length > 0 ? studentInfoRows[0].FullName : 'Your child';
+        const parentMsg = `${studentName} time out recorded at ${currentTime}`;
+        if (parentUserId) {
+          await pool.query(`INSERT INTO notification (RecipientID, Message, Status) VALUES (?, ?, 'Unread')`, [parentUserId, parentMsg]);
+        }
+        // Also notify admins (broadcast approach: send to all admin users)
+        const [admins] = await pool.query(`SELECT UserID FROM useraccount WHERE Role = 'Admin'`);
+        for (const a of admins) {
+          await pool.query(`INSERT INTO notification (RecipientID, Message, Status) VALUES (?, ?, 'Unread')`, [a.UserID, `[ATTENDANCE] ${parentMsg}`]);
+        }
+      } catch (_) {
+        // best-effort
+      }
+
       // Try to fetch parent contact and send email for Time Out
       try {
         const [rows] = await pool.query(
@@ -179,6 +207,32 @@ router.post('/verify-id', async (req, res) => {
         [studentId, deviceId, 'verify', 'success', req.ip]
       );
       
+      // Create notifications: parent and admin about time in
+      try {
+        const [recipients] = await pool.query(
+          `SELECT ua.UserID as userId
+           FROM studentrecord s
+           JOIN parent p ON p.ParentID = s.ParentID
+           JOIN useraccount ua ON ua.UserID = p.UserID
+           WHERE s.StudentID = ?
+           LIMIT 1`,
+          [studentId]
+        );
+        const parentUserId = Array.isArray(recipients) && recipients.length > 0 ? recipients[0].userId : null;
+        const [studentInfoRows] = await pool.query('SELECT FullName FROM studentrecord WHERE StudentID = ? LIMIT 1', [studentId]);
+        const studentName = Array.isArray(studentInfoRows) && studentInfoRows.length > 0 ? studentInfoRows[0].FullName : 'Your child';
+        const parentMsg = `${studentName} time in recorded at ${currentTime}`;
+        if (parentUserId) {
+          await pool.query(`INSERT INTO notification (RecipientID, Message, Status) VALUES (?, ?, 'Unread')`, [parentUserId, parentMsg]);
+        }
+        const [admins] = await pool.query(`SELECT UserID FROM useraccount WHERE Role = 'Admin'`);
+        for (const a of admins) {
+          await pool.query(`INSERT INTO notification (RecipientID, Message, Status) VALUES (?, ?, 'Unread')`, [a.UserID, `[ATTENDANCE] ${parentMsg}`]);
+        }
+      } catch (_) {
+        // best-effort
+      }
+
       // Try to fetch parent contact and send email for Time In
       try {
         const [rows] = await pool.query(

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Menu, Bell, User, LogOut } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import LogoutModal from './components/LogoutModal';
+import NotificationBell from '../shared/NotificationBell';
 
 interface RegistrarHeaderProps {
   onMobileMenuToggle: () => void;
@@ -45,10 +46,7 @@ export default function RegistrarHeader({ onMobileMenuToggle }: RegistrarHeaderP
         {/* Right side - Notifications and user menu */}
         <div className="flex items-center space-x-4">
           {/* Notifications */}
-          <button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
-            <Bell className="w-5 h-5 text-gray-600" />
-            <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
-          </button>
+          <NotificationBell />
 
           {/* User menu */}
           <div className="flex items-center space-x-3">
