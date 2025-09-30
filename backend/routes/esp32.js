@@ -482,17 +482,50 @@ router.delete('/devices/:deviceId/fingerprints/:studentId', async (req, res) => 
       });
     }
     
-    // Clear fingerprint template for this student
+    // Try to resolve fingerprintId for device-side deletion
+    let fingerprintId = null;
+    try {
+      const [mapped] = await pool.query(
+        'SELECT FingerprintID FROM fingerprint_mapping WHERE StudentID = ? LIMIT 1',
+        [studentId]
+      );
+      if (mapped.length > 0) {
+        fingerprintId = parseInt(mapped[0].FingerprintID);
+      } else {
+        const [legacy] = await pool.query(
+          'SELECT CAST(FingerprintTemplate AS UNSIGNED) as fid FROM studentrecord WHERE StudentID = ? AND FingerprintTemplate IS NOT NULL AND FingerprintTemplate != \''\'',
+          [studentId]
+        );
+        if (legacy.length > 0 && !isNaN(legacy[0].fid)) {
+          fingerprintId = parseInt(legacy[0].fid);
+        }
+      }
+    } catch (_) {
+      // best-effort; continue
+    }
+
+    // Clear fingerprint template for this student (database)
     await pool.query(
       'UPDATE studentrecord SET FingerprintTemplate = NULL WHERE StudentID = ?',
       [studentId]
     );
 
-    // Remove normalized mappings for this student
+    // Remove normalized mappings for this student (database)
     await pool.query(
       'DELETE FROM fingerprint_mapping WHERE StudentID = ?',
       [studentId]
     );
+
+    // Queue device command to delete the fingerprint on the ESP32 (if we know the slot)
+    if (!isNaN(fingerprintId) && fingerprintId > 0) {
+      const commandId = Date.now();
+      pendingCommands.set(deviceId, {
+        command: 'delete_fingerprint',
+        parameters: { fingerprintId },
+        timestamp: new Date(),
+        commandId
+      });
+    }
     
     // Log the deletion
     await pool.query(
@@ -529,6 +562,15 @@ router.delete('/devices/:deviceId/clear-fingerprints', async (req, res) => {
 
     // Clear mapping table
     await pool.query('TRUNCATE TABLE fingerprint_mapping');
+
+    // Queue device command to clear all fingerprints on ESP32
+    const commandId = Date.now();
+    pendingCommands.set(deviceId, {
+      command: 'clear_all',
+      parameters: {},
+      timestamp: new Date(),
+      commandId
+    });
     
     // Log the action
     await pool.query(
