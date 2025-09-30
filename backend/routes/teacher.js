@@ -840,8 +840,8 @@ router.get('/excuse-letters', async (req, res) => {
       params.push(safeSubjectId);
     }
 
-    query += ' ORDER BY el.DateFiled DESC LIMIT ?';
-    params.push(safeLimit);
+    // Inline LIMIT because some MySQL versions/connectors disallow parameter binding for LIMIT
+    query += ` ORDER BY el.DateFiled DESC LIMIT ${safeLimit}`;
 
     const [rows] = await pool.execute(query, params);
 
