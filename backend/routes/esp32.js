@@ -246,7 +246,7 @@ router.post('/devices/:deviceId/command', async (req, res) => {
     // Log the command in fingerprint_log
     await pool.query(
       'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
-      [null, deviceId, 'verify', 'success', req.ip]
+      [null, deviceId, 'command', 'success', req.ip]
     );
     
     // Execute command based on type
@@ -533,7 +533,7 @@ router.delete('/devices/:deviceId/clear-fingerprints', async (req, res) => {
     // Log the action
     await pool.query(
       'INSERT INTO fingerprint_log (StudentID, ESP32DeviceID, Action, Status, Timestamp, DeviceIP) VALUES (?, ?, ?, ?, NOW(), ?)',
-      [null, deviceId, 'clear_all', 'success', req.ip]
+      [null, deviceId, 'clear', 'success', req.ip]
     );
     
     res.json({

@@ -502,7 +502,8 @@ const parseTaggedMessage = (text = '') => {
 router.get('/messages', async (req, res) => {
   try {
     const teacherUserId = req.user.userId;
-    const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+    const limitRaw = req.query.limit || '50';
+    const safeLimit = Math.min(Math.max(parseInt(String(limitRaw), 10) || 50, 1), 200);
 
     // Outgoing (teacher -> parent)
     const [outRows] = await pool.execute(
@@ -510,8 +511,8 @@ router.get('/messages', async (req, res) => {
        FROM notification
        WHERE Message LIKE ?
        ORDER BY DateSent DESC
-       LIMIT ?`,
-      [ `%[TEACHER_MSG:${teacherUserId}:%`, limit ]
+       LIMIT ${safeLimit}`,
+      [ `%[TEACHER_MSG:${teacherUserId}:%` ]
     );
 
     // Incoming (parent -> teacher) to this teacher user
@@ -520,8 +521,8 @@ router.get('/messages', async (req, res) => {
        FROM notification
        WHERE RecipientID = ? AND Message LIKE '[PARENT_MSG:%'
        ORDER BY DateSent DESC
-       LIMIT ?`,
-      [ teacherUserId, limit ]
+       LIMIT ${safeLimit}`,
+      [ teacherUserId ]
     );
 
     const items = [];
@@ -585,7 +586,7 @@ router.get('/messages', async (req, res) => {
 
     // Sort combined list by date desc and cap to limit
     items.sort((a, b) => new Date(b.dateSent) - new Date(a.dateSent));
-    return res.json({ success: true, data: items.slice(0, limit) });
+    return res.json({ success: true, data: items.slice(0, safeLimit) });
   } catch (error) {
     console.error('Teacher list messages error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error' });
