@@ -29,6 +29,12 @@ interface Section {
 }
 
 export default function StudentManagement() {
+  // Normalize to YYYY-MM-DD for date inputs
+  const toInputDate = (value?: string) => {
+    if (!value) return '';
+    const iso = value.toString();
+    return iso.length >= 10 ? iso.substring(0, 10) : iso;
+  };
   const formatDateMDY = (value?: string) => {
     if (!value) return '';
     const iso = value.toString();
@@ -92,7 +98,7 @@ export default function StudentManagement() {
     setEditingStudent(student);
     setEditForm({
       studentName: student.studentName,
-      dateOfBirth: student.dateOfBirth,
+      dateOfBirth: toInputDate(student.dateOfBirth),
       gender: student.gender,
       placeOfBirth: student.placeOfBirth,
       nationality: student.nationality,
@@ -389,6 +395,7 @@ export default function StudentManagement() {
                       onChange={(e) => setEditForm({...editForm, gender: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
+                      <option value="">Select Gender</option>
                       <option value="Male">Male</option>
                       <option value="Female">Female</option>
                       <option value="Other">Other</option>
@@ -419,6 +426,7 @@ export default function StudentManagement() {
                       onChange={(e) => setEditForm({...editForm, gradeLevel: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
+                      <option value="">Select Grade</option>
                       <option value="1">Grade 1</option>
                       <option value="2">Grade 2</option>
                       <option value="3">Grade 3</option>

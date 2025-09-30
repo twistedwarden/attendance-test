@@ -61,12 +61,20 @@ export default function StudentsSection() {
   const [parentQuery, setParentQuery] = useState('');
   const [parentResults, setParentResults] = useState<any[]>([]);
   const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
+  const [selectedParentName, setSelectedParentName] = useState<string>('');
+  const [selectedParentContact, setSelectedParentContact] = useState<string>('');
   const [newParentName, setNewParentName] = useState('');
   const [newParentEmail, setNewParentEmail] = useState('');
   const [newParentPassword, setNewParentPassword] = useState('');
   const [newParentContact, setNewParentContact] = useState('');
   const [newParentRelationship, setNewParentRelationship] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  
+  const toInputDate = (value?: string | null) => {
+    if (!value) return '';
+    const iso = value.toString();
+    return iso.length >= 10 ? iso.substring(0, 10) : iso;
+  };
   
   // Suggestions state
   const [availableSections, setAvailableSections] = useState<string[]>([]);
@@ -195,6 +203,7 @@ export default function StudentsSection() {
     setFormAdditionalInfo('');
     setParentMode('none');
     setParentQuery(''); setParentResults([]); setSelectedParentId(null);
+    setSelectedParentName(''); setSelectedParentContact('');
     setNewParentName(''); setNewParentEmail(''); setNewParentPassword('');
     setNewParentContact(''); setNewParentRelationship('');
     setCreateOpen(true);
@@ -242,8 +251,33 @@ export default function StudentsSection() {
     setFormAddress('');
     setFormAdditionalInfo('');
     setParentMode('none'); setSelectedParentId(null); setParentQuery(''); setParentResults([]);
+    setSelectedParentName(''); setSelectedParentContact('');
     setCreateOpen(false);
     setEditOpen(true);
+
+    // Load additional details to prefill personal info fields
+    (async () => {
+      try {
+        const details = await AdminService.getEnrollment(s.id);
+        setFormDateOfBirth(toInputDate(details?.dateOfBirth));
+        setFormGender(details?.gender || '');
+        setFormPlaceOfBirth(details?.placeOfBirth || '');
+        setFormNationality(details?.nationality || '');
+        setFormAddress(details?.address || '');
+        setFormAdditionalInfo(details?.additionalInfo || '');
+        // Prefer sectionId from details if available
+        if (details?.sectionId && !formSectionId) setFormSectionId(details.sectionId);
+        if (details?.gradeLevel && !formGrade) setFormGrade(details.gradeLevel);
+        if (details?.parentId) {
+          setParentMode('existing');
+          setSelectedParentId(details.parentId);
+          setSelectedParentName(details.parentName || '');
+          setSelectedParentContact(details.parentContact || '');
+        }
+      } catch (e) {
+        // Silent fail; the basic fields are already loaded
+      }
+    })();
   };
 
   const openAttendanceModal = async (student: StudentVM) => {
@@ -713,13 +747,17 @@ export default function StudentsSection() {
                 <input value={parentQuery} onChange={(e) => { setParentQuery(e.target.value); searchParents(e.target.value); }} placeholder="Search parent by name/contact" className="w-full px-3 py-2 border border-gray-300 rounded" />
                 <div className="max-h-40 overflow-auto border rounded">
                   {parentResults.map((p) => (
-                    <button key={p.ParentID} onClick={() => setSelectedParentId(p.ParentID)} className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${selectedParentId===p.ParentID?'bg-blue-50':''}`}>
+                    <button key={p.ParentID} onClick={() => { setSelectedParentId(p.ParentID); setSelectedParentName(p.FullName || ''); setSelectedParentContact(p.ContactInfo || ''); }} className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${selectedParentId===p.ParentID?'bg-blue-50':''}`}>
                       <div className="text-sm font-medium">{p.FullName}</div>
                       <div className="text-xs text-gray-500">{p.ContactInfo}</div>
                     </button>
                   ))}
                 </div>
-                {selectedParentId && <div className="text-sm text-green-700">Selected ParentID: {selectedParentId}</div>}
+                {selectedParentId && (
+                  <div className="text-sm text-green-700">
+                    Linked to: <span className="font-medium">{selectedParentName || `Parent #${selectedParentId}`}</span>{selectedParentContact ? ` • ${selectedParentContact}` : ''}
+                  </div>
+                )}
               </div>
             )}
             {parentMode === 'new' && (
@@ -759,6 +797,9 @@ export default function StudentsSection() {
                         }
                         const info = await AdminService.createParentFull({ fullName: newParentName, contactInfo: newParentContact || null, relationship: newParentRelationship || null, email: newParentEmail, password: newParentPassword });
                         setSelectedParentId(info.parentId);
+                        setSelectedParentName(newParentName);
+                        setSelectedParentContact(newParentContact || '');
+                        setParentMode('existing');
                         toast.success('Parent created and linked');
                       } catch (e: any) {
                         toast.error(e?.message || 'Failed to create parent');
