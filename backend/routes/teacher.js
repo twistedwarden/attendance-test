@@ -776,6 +776,14 @@ router.get('/excuse-letters', async (req, res) => {
     const teacherUserId = req.user.userId;
     const { studentId, status, subjectId, limit = 50 } = req.query;
 
+    // Sanitize inputs
+    const safeLimit = Math.min(
+      Math.max(parseInt(String(limit), 10) || 50, 1),
+      200
+    );
+    const safeStudentId = studentId ? Number(studentId) : null;
+    const safeSubjectId = subjectId ? Number(subjectId) : null;
+
     let query = `
       SELECT 
         el.LetterID as excuseLetterId,
@@ -817,9 +825,9 @@ router.get('/excuse-letters', async (req, res) => {
 
     const params = [teacherUserId];
 
-    if (studentId) {
+    if (safeStudentId) {
       query += ' AND el.StudentID = ?';
-      params.push(studentId);
+      params.push(safeStudentId);
     }
 
     if (status && status !== 'all') {
@@ -827,13 +835,13 @@ router.get('/excuse-letters', async (req, res) => {
       params.push(status.toLowerCase());
     }
 
-    if (subjectId) {
+    if (safeSubjectId) {
       query += ' AND el.SubjectID = ?';
-      params.push(subjectId);
+      params.push(safeSubjectId);
     }
 
     query += ' ORDER BY el.DateFiled DESC LIMIT ?';
-    params.push(parseInt(limit));
+    params.push(safeLimit);
 
     const [rows] = await pool.execute(query, params);
 
