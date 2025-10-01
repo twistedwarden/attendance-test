@@ -19,6 +19,7 @@ export interface Parent {
 }
 
 export interface Student {
+  id: number; // Add id field for compatibility
   studentId: number;
   fullName: string;
   gradeLevel: string;
@@ -186,6 +187,7 @@ export const ParentService = {
     
     // Map database field names to frontend interface
     const students = (data.data || []).map((student: any) => ({
+      id: student.studentId, // Map studentId to id for compatibility
       studentId: student.studentId,
       fullName: student.fullName,
       gradeLevel: student.gradeLevel,
