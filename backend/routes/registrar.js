@@ -324,6 +324,29 @@ router.post('/enrollments/:id/approve', authenticateToken, requireRole(['registr
         );
       }
 
+      // After approval, optionally assign schedules (inside transaction)
+      if (Array.isArray(scheduleIds) && scheduleIds.length > 0) {
+        // Validate that all schedule IDs exist before assigning
+        const scheduleValidationQuery = `
+          SELECT ScheduleID, TeacherID, SubjectID 
+          FROM teacherschedule 
+          WHERE ScheduleID IN (${scheduleIds.map(() => '?').join(',')})
+        `;
+        const [existingSchedules] = await connection.execute(scheduleValidationQuery, scheduleIds);
+        
+        if (existingSchedules.length !== scheduleIds.length) {
+          throw new Error('One or more schedule IDs are invalid');
+        }
+
+        // Insert schedule assignments
+        const values = scheduleIds.map((sid) => [id, sid, req.user.userId]);
+        await connection.execute(
+          'INSERT IGNORE INTO studentschedule (StudentID, ScheduleID, CreatedBy) VALUES ' +
+          values.map(() => '(?, ?, ?)').join(', '),
+          values.flat()
+        );
+      }
+
       await connection.commit();
 
       // Notify parent of approval via `notification` table
@@ -341,17 +364,6 @@ router.post('/enrollments/:id/approve', authenticateToken, requireRole(['registr
           await pool.execute(`INSERT INTO notification (RecipientID, Message, Status) VALUES (?, ?, 'Unread')`, [rows[0].userId, msg]);
         }
       } catch (_) {}
-
-      // After approval, optionally assign schedules
-      if (Array.isArray(scheduleIds) && scheduleIds.length > 0) {
-        const values = scheduleIds.map((sid) => [id, sid, req.user.userId]);
-        // Insert ignoring duplicates
-        await pool.query(
-          'INSERT IGNORE INTO studentschedule (StudentID, ScheduleID, CreatedBy) VALUES ' +
-          values.map(() => '(?, ?, ?)').join(', '),
-          values.flat()
-        );
-      }
 
       res.json({
         success: true,
