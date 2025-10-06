@@ -338,7 +338,7 @@ export const AdminService = {
 		return data.data || [];
 	},
 
-	async createSchedule(payload: { subject: string; teacher: string; sectionId?: number | null; gradeLevel?: string | null; days: string[]; startTime: string; endTime: string; }) {
+	async createSchedule(payload: { subject: string; teacher: string; sectionId?: number | null; gradeLevel?: string | null; days: string[]; startTime: string; endTime: string; gracePeriod?: number; }) {
 		const token = getToken();
 		if (!token) throw new Error('Not authenticated');
 		const res = await fetch(`${API_BASE_URL}/admin/schedules`, {
@@ -358,7 +358,7 @@ export const AdminService = {
 		return data.data;
 	},
 
-	async updateSchedule(id: number, payload: { subject?: string; teacher?: string; sectionId?: number | null; gradeLevel?: string | null; startTime?: string; endTime?: string; days?: string[]; }) {
+	async updateSchedule(id: number, payload: { subject?: string; teacher?: string; sectionId?: number | null; gradeLevel?: string | null; startTime?: string; endTime?: string; days?: string[]; gracePeriod?: number; }) {
 		const token = getToken();
 		if (!token) throw new Error('Not authenticated');
 		const res = await fetch(`${API_BASE_URL}/admin/schedules/${id}`, {

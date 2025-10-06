@@ -939,7 +939,7 @@ router.get('/schedules', async (req, res) => {
 router.post('/schedules', async (req, res) => {
     try {
         // console.log('POST /schedules - Request body:', req.body);
-        const { subject, teacher, sectionId = null, gradeLevel = null, days = [], startTime, endTime } = req.body;
+        const { subject, teacher, sectionId = null, gradeLevel = null, days = [], startTime, endTime, gracePeriod = 15 } = req.body;
         if (!subject || !teacher || !startTime || !endTime) {
             return res.status(400).json({ success: false, message: 'subject, teacher, startTime, endTime are required' });
         }
@@ -1051,8 +1051,8 @@ router.post('/schedules', async (req, res) => {
         const insertedIds = [];
         for (const dayOfWeek of days) {
             const [ins] = await pool.execute(
-                'INSERT INTO teacherschedule (TeacherID, SubjectID, SectionID, TimeIn, TimeOut, DayOfWeek) VALUES (?, ?, ?, ?, ?, ?)',
-                [teacherId, subjectId, sectionId, startTime, endTime, dayOfWeek]
+                'INSERT INTO teacherschedule (TeacherID, SubjectID, SectionID, TimeIn, TimeOut, DayOfWeek, GracePeriod) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [teacherId, subjectId, sectionId, startTime, endTime, dayOfWeek, gracePeriod]
             );
             insertedIds.push(ins.insertId);
             
@@ -1217,7 +1217,7 @@ router.put('/schedules/:id', async (req, res) => {
         if (finalEndTime !== currentRecord.TimeOut) { sets.push('TimeOut = ?'); vals.push(finalEndTime); }
         if (finalSectionId !== currentRecord.SectionID) { sets.push('SectionID = ?'); vals.push(finalSectionId); }
         // GradeLevel is now obtained through SectionID relationship, no direct update needed
-        if (gracePeriod !== undefined) { sets.push('GracePeriod = ?'); vals.push(gracePeriod); }
+        if (gracePeriod !== undefined && gracePeriod !== currentRecord.GracePeriod) { sets.push('GracePeriod = ?'); vals.push(gracePeriod); }
         // Note: days handling is done separately below to support multiple days
 
         if (sets.length === 0) {
@@ -1229,7 +1229,8 @@ router.put('/schedules/:id', async (req, res) => {
                 section: currentRecord.SectionID ? `Section ${currentRecord.SectionID}` : 'No Section',
                 days: currentRecord.DayOfWeek ? [currentRecord.DayOfWeek] : [],
                 startTime: String(currentRecord.TimeIn).slice(0,5),
-                endTime: String(currentRecord.TimeOut).slice(0,5)
+                endTime: String(currentRecord.TimeOut).slice(0,5),
+                gracePeriod: currentRecord.GracePeriod || 15
             }});
         }
 
@@ -1253,8 +1254,8 @@ router.put('/schedules/:id', async (req, res) => {
                 const insertedIds = [];
                 for (const dayOfWeek of days) {
                     const [ins] = await pool.execute(
-                        'INSERT INTO teacherschedule (TeacherID, SubjectID, SectionID, TimeIn, TimeOut, DayOfWeek) VALUES (?, ?, ?, ?, ?, ?)',
-                        [currentRecord.TeacherID, currentRecord.SubjectID, currentRecord.SectionID, currentRecord.TimeIn, currentRecord.TimeOut, dayOfWeek]
+                        'INSERT INTO teacherschedule (TeacherID, SubjectID, SectionID, TimeIn, TimeOut, DayOfWeek, GracePeriod) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        [currentRecord.TeacherID, currentRecord.SubjectID, currentRecord.SectionID, currentRecord.TimeIn, currentRecord.TimeOut, dayOfWeek, currentRecord.GracePeriod || 15]
                     );
                     insertedIds.push(ins.insertId);
                     
@@ -1269,7 +1270,8 @@ router.put('/schedules/:id', async (req, res) => {
                             COALESCE(sec.SectionName, CAST(ts.SectionID AS CHAR)) AS section,
                             ts.DayOfWeek AS dayOfWeek,
                             ts.TimeIn AS startTime,
-                            ts.TimeOut AS endTime
+                            ts.TimeOut AS endTime,
+                            ts.GracePeriod AS gracePeriod
                      FROM teacherschedule ts
                      LEFT JOIN subject sub ON sub.SubjectID = ts.SubjectID
                      LEFT JOIN teacherrecord tr ON tr.UserID = ts.TeacherID
@@ -1288,7 +1290,8 @@ router.put('/schedules/:id', async (req, res) => {
                         section: r.section || null,
                         days: days,
                         startTime: (r.startTime || '').toString().slice(0,5),
-                        endTime: (r.endTime || '').toString().slice(0,5)
+                        endTime: (r.endTime || '').toString().slice(0,5),
+                        gracePeriod: r.gracePeriod || 15
                     }});
                 }
             }

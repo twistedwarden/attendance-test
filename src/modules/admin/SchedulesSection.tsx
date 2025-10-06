@@ -18,6 +18,7 @@ interface ScheduleVM {
   days: string[]; // e.g. ["Mon","Wed","Fri"]
   startTime: string; // HH:mm
   endTime: string;   // HH:mm
+  gracePeriod?: number; // Grace period in minutes
 }
 
 interface TeacherScheduleVM {
@@ -262,6 +263,7 @@ export default function SchedulesSection() {
           days: r.days ?? r.Days ?? [],
           startTime: r.startTime ?? r.StartTime ?? '08:00',
           endTime: r.endTime ?? r.EndTime ?? '09:00',
+          gracePeriod: r.gracePeriod ?? r.GracePeriod ?? 15,
         }));
         setRows(mapped);
       } else if (viewMode === 'calendar') {
@@ -418,6 +420,7 @@ export default function SchedulesSection() {
     setFormSubject(row.subject);
     setFormTeacher(row.teacher);
     setFormSectionId(row.sectionId || null);
+    setFormGracePeriod(row.gracePeriod || 15);
     // Convert "3" to "Grade 3" format for the dropdown
     const gradeLevel = row.gradeLevel ? `Grade ${row.gradeLevel}` : '';
     console.log('Setting grade level to:', gradeLevel);
@@ -433,6 +436,7 @@ export default function SchedulesSection() {
     setFormStart('08:00');
     setFormEnd('09:00');
     setFormDays(['Mon', 'Wed', 'Fri']);
+    setFormGracePeriod(15);
     setCreateOpen(true);
   };
 
@@ -491,6 +495,7 @@ export default function SchedulesSection() {
         startTime: formStart,
         endTime: formEnd,
         days,
+        gracePeriod: formGracePeriod,
       });
       toast.success('Schedule created');
       setCreateOpen(false);
@@ -534,6 +539,7 @@ export default function SchedulesSection() {
         startTime: formStart,
         endTime: formEnd,
         days,
+        gracePeriod: formGracePeriod,
       });
       toast.success('Schedule updated');
       setEditOpen(false);
@@ -1109,6 +1115,7 @@ export default function SchedulesSection() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Section</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grace Period</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 ) : viewMode === 'subjects' ? (
@@ -1159,6 +1166,7 @@ export default function SchedulesSection() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.days.join(', ')}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.startTime} - {r.endTime}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{r.gracePeriod || 15} min</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center gap-3">
                           <button onClick={() => openEdit(r)} className="text-blue-600 hover:text-blue-900 inline-flex items-center gap-1">
@@ -1404,6 +1412,19 @@ export default function SchedulesSection() {
               ))}
             </div>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Grace Period (minutes)</label>
+            <input 
+              type="number" 
+              min="0" 
+              max="60" 
+              value={formGracePeriod} 
+              onChange={(e) => setFormGracePeriod(Number(e.target.value))} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+              placeholder="15"
+            />
+            <p className="text-xs text-gray-500 mt-1">Number of minutes after class start time before marking as late</p>
+          </div>
         </div>
       </Modal>
 
@@ -1516,6 +1537,19 @@ export default function SchedulesSection() {
                 </label>
               ))}
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Grace Period (minutes)</label>
+            <input 
+              type="number" 
+              min="0" 
+              max="60" 
+              value={formGracePeriod} 
+              onChange={(e) => setFormGracePeriod(Number(e.target.value))} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+              placeholder="15"
+            />
+            <p className="text-xs text-gray-500 mt-1">Number of minutes after class start time before marking as late</p>
           </div>
         </div>
       </Modal>
