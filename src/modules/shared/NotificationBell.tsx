@@ -17,6 +17,7 @@ export default function NotificationBell({ className }: NotificationBellProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
+  const [lastLoadTime, setLastLoadTime] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
 
   const unreadCount = items.filter(n => String(n.status).toLowerCase() !== 'read').length;
@@ -30,14 +31,30 @@ export default function NotificationBell({ className }: NotificationBellProps) {
   }, []);
 
   useEffect(() => {
-    if (isOpen) void load();
-  }, [isOpen]);
+    // Load notifications on mount to show count immediately
+    void load();
+    
+    // Set up periodic refresh every 30 seconds
+    const interval = setInterval(() => {
+      void load();
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    // Only reload if dropdown is opened and we haven't loaded recently (within 5 seconds)
+    if (isOpen && Date.now() - lastLoadTime > 5000) {
+      void load();
+    }
+  }, [isOpen, lastLoadTime]);
 
   async function load() {
     try {
       setIsLoading(true);
       const data = await AuthService.getNotifications();
       setItems(Array.isArray(data) ? data : []);
+      setLastLoadTime(Date.now());
     } catch (e) {
       // noop
     } finally {
