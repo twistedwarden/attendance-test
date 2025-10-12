@@ -10,13 +10,27 @@ export default function NotificationDropdown({ className }: NotificationDropdown
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [lastLoadTime, setLastLoadTime] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    // Load notifications on mount to show count immediately
+    loadNotifications();
+    
+    // Set up periodic refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadNotifications();
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    // Only reload if dropdown is opened and we haven't loaded recently (within 5 seconds)
+    if (isOpen && Date.now() - lastLoadTime > 5000) {
       loadNotifications();
     }
-  }, [isOpen]);
+  }, [isOpen, lastLoadTime]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -36,6 +50,7 @@ export default function NotificationDropdown({ className }: NotificationDropdown
       setIsLoading(true);
       const data = await ParentService.getNotifications();
       setNotifications(data);
+      setLastLoadTime(Date.now());
     } catch (error) {
       console.error('Failed to load notifications:', error);
     } finally {
