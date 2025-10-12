@@ -26,7 +26,7 @@ export default function RegistrarHeader({ onMobileMenuToggle }: RegistrarHeaderP
   };
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
+    <header className="bg-white shadow-sm border-b border-gray-200 px-4 lg:px-6 py-4 sticky top-0 z-40">
       <div className="flex items-center justify-between">
         {/* Left side - Mobile menu and title */}
         <div className="flex items-center space-x-4">

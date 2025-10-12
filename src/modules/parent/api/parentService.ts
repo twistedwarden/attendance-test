@@ -327,6 +327,30 @@ export const ParentService = {
     return data.data || [];
   },
 
+  // Get student subjects for calendar
+  async getStudentSubjects(studentId: number): Promise<Array<{
+    subjectId: number;
+    subjectName: string;
+    subjectDescription: string;
+    scheduleId: number;
+    timeIn: string;
+    timeOut: string;
+    dayOfWeek: string;
+    teacherName: string;
+    teacherId: number;
+  }>> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    const res = await fetch(`${API_BASE_URL}/parent/student-subjects/${studentId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch student subjects');
+    
+    return data.data || [];
+  },
+
   calculateAttendanceStats(attendanceRecords: AttendanceRecord[]): AttendanceStats {
     const today = new Date().toISOString().split('T')[0];
     const todayRecord = attendanceRecords.find(record => record.date === today);

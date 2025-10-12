@@ -778,11 +778,14 @@ router.get('/subjectattendance', async (req, res) => {
                 sr.FullName,
                 sr.GradeLevel,
                 sec.SectionName as Section,
-                s.SubjectName
+                s.SubjectName,
+                al.TimeIn,
+                al.TimeOut
             FROM subjectattendance sa
             LEFT JOIN studentrecord sr ON sr.StudentID = sa.StudentID
             LEFT JOIN section sec ON sec.SectionID = sr.SectionID
             LEFT JOIN subject s ON s.SubjectID = sa.SubjectID
+            LEFT JOIN attendancelog al ON al.StudentID = sa.StudentID AND al.Date = sa.Date
             WHERE 1=1
         `;
         

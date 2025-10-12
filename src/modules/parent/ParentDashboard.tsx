@@ -6,6 +6,7 @@ import MessagesPage from './pages/Messages';
 import ModernDashboard from './pages/ModernDashboard';
 import CompactProfile from './pages/CompactProfile';
 import CompactAttendance from './pages/CompactAttendance';
+import CalendarPage from './pages/CalendarPage';
 import NoStudentsMessage from './components/NoStudentsMessage';
 import StudentEnrollmentForm from './components/StudentEnrollmentForm';
 import { ExcuseLetterSection } from './components/ExcuseLetterSection';
@@ -150,6 +151,14 @@ const ParentDashboard = () => {
             element={
               <div className="flex-1 w-full h-full overflow-auto">
                 {selectedStudent && <CompactAttendance selectedDaughter={selectedStudent} />}
+              </div>
+            } 
+          />
+          <Route 
+            path="calendar" 
+            element={
+              <div className="flex-1 w-full h-full overflow-auto">
+                {selectedStudent && <CalendarPage selectedStudent={selectedStudent} />}
               </div>
             } 
           />

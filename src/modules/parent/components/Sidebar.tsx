@@ -48,6 +48,12 @@ const Sidebar = ({ selectedStudent, onStudentChange, students, parent, isMobileO
       description: 'View Records'
     },
     {
+      name: 'Calendar',
+      href: '/calendar',
+      icon: Calendar,
+      description: 'Subject Schedule'
+    },
+    {
       name: 'Messages',
       href: '/messages',
       icon: MessageSquare,

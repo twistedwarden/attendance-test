@@ -30,6 +30,8 @@ interface SubjectAttendanceRow {
   GradeLevel?: string | null;
   Section?: string | null;
   SubjectName?: string;
+  TimeIn?: string | null;
+  TimeOut?: string | null;
 }
 
 interface Subject {
@@ -229,13 +231,17 @@ export default function AttendanceLog() {
         year: 'numeric'
       }) : 'N/A';
       
+      // Use actual attendance time instead of CreatedAt
+      const attendanceTime = r.TimeIn || r.TimeOut || '';
+      const formattedTime = attendanceTime ? attendanceTime.toString().slice(0, 5) : '';
+      
       return {
         id: String(r.SubjectAttendanceID),
         studentId: r.StudentID, // Include original student ID
         studentName: r.FullName || `Student #${r.StudentID}`,
         grade: [r.GradeLevel, r.Section].filter(Boolean).join(' ').trim() || 'N/A',
         subject: r.SubjectName || 'Unknown Subject',
-        time: new Date(r.CreatedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        time: formattedTime || new Date(r.CreatedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
         date: date,
         status,
         parentNotified: false

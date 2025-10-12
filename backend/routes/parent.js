@@ -649,6 +649,51 @@ router.post('/enrollment-documents', authenticateToken, requireRole(['parent']),
   }
 });
 
+// Get student subjects/schedule for calendar
+router.get('/student-subjects/:studentId', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const parentId = req.user.parentId;
+
+    // Verify the student belongs to this parent
+    const [studentCheck] = await pool.execute(
+      'SELECT StudentID FROM studentrecord WHERE StudentID = ? AND ParentID = ?',
+      [studentId, parentId]
+    );
+
+    if (studentCheck.length === 0) {
+      return res.status(403).json({ success: false, message: 'Access denied to this student' });
+    }
+
+    // Get student subjects with schedule information
+    const [subjects] = await pool.execute(
+      `SELECT 
+        s.SubjectID as subjectId,
+        s.SubjectName as subjectName,
+        s.Description as subjectDescription,
+        ts.ScheduleID as scheduleId,
+        ts.TimeIn as timeIn,
+        ts.TimeOut as timeOut,
+        ts.DayOfWeek as dayOfWeek,
+        COALESCE(tr.FullName, ua.Username, 'Unknown Teacher') as teacherName,
+        ts.TeacherID as teacherId
+       FROM studentschedule ss
+       JOIN teacherschedule ts ON ts.ScheduleID = ss.ScheduleID
+       LEFT JOIN subject s ON s.SubjectID = ts.SubjectID
+       LEFT JOIN teacherrecord tr ON tr.UserID = ts.TeacherID
+       LEFT JOIN useraccount ua ON ua.UserID = ts.TeacherID
+       WHERE ss.StudentID = ?
+       ORDER BY FIELD(ts.DayOfWeek, 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'), ts.TimeIn`,
+      [studentId]
+    );
+
+    return res.json({ success: true, data: subjects });
+  } catch (error) {
+    console.error('Get student subjects error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 // Get subject-based attendance for a specific student
 router.get('/subject-attendance/:studentId', authenticateToken, requireRole(['parent']), async (req, res) => {
   try {

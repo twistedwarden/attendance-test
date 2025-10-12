@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import RegistrarSidebar from './RegistrarSidebar';
 import RegistrarHeader from './RegistrarHeader';
@@ -21,6 +21,20 @@ export default function RegistrarDashboard() {
   const closeMobileSidebar = () => {
     setIsMobileSidebarOpen(false);
   };
+
+  // Prevent body scroll when mobile sidebar is open
+  useEffect(() => {
+    if (isMobileSidebarOpen) {
+      document.body.classList.add('mobile-sidebar-open');
+    } else {
+      document.body.classList.remove('mobile-sidebar-open');
+    }
+
+    // Cleanup on unmount
+    return () => {
+      document.body.classList.remove('mobile-sidebar-open');
+    };
+  }, [isMobileSidebarOpen]);
 
   const renderContent = () => {
     switch (activeSection) {
@@ -46,7 +60,7 @@ export default function RegistrarDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 overflow-x-hidden">
       <RegistrarSidebar 
         activeSection={activeSection} 
         onSectionChange={setActiveSection}
@@ -54,10 +68,10 @@ export default function RegistrarDashboard() {
         onMobileClose={closeMobileSidebar}
       />
       
-      <div className="lg:ml-64 flex flex-col min-h-screen">
+      <div className="lg:ml-64 flex flex-col min-h-screen relative">
         <RegistrarHeader onMobileMenuToggle={toggleMobileSidebar} />
         
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-4 lg:p-8 overflow-y-auto">
           {renderContent()}
         </main>
       </div>

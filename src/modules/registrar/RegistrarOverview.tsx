@@ -137,14 +137,14 @@ export default function RegistrarOverview() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Registrar Dashboard</h2>
-        <p className="text-gray-600">Welcome to the registrar management portal. Here's an overview of your responsibilities.</p>
+        <h2 className="text-xl lg:text-2xl font-bold text-gray-900">Registrar Dashboard</h2>
+        <p className="text-sm lg:text-base text-gray-600">Welcome to the registrar management portal. Here's an overview of your responsibilities.</p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
         {statCards.map((stat) => {
           const Icon = stat.icon;
           return (
@@ -184,7 +184,7 @@ export default function RegistrarOverview() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
         {/* Pending Enrollments */}
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between mb-4">

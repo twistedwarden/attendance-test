@@ -12,3 +12,18 @@
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+
+/* Mobile body scroll lock when sidebar is open */
+.mobile-sidebar-open {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  height: 100%;
+}
+
+/* Ensure proper mobile scrolling */
+@media (max-width: 1023px) {
+  body {
+    -webkit-overflow-scrolling: touch;
+  }
+}
