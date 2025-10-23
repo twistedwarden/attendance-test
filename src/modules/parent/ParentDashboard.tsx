@@ -108,7 +108,7 @@ const ParentDashboard = () => {
 
   // Show no students message if no students are linked
   if (students.length === 0) {
-    return <NoStudentsMessage onStudentEnrolled={handleStudentEnrolled} enrollmentEnabled={enrollmentEnabled} />;
+    return <NoStudentsMessage onStudentEnrolled={handleStudentEnrolled} enrollmentEnabled={enrollmentEnabled} parent={parent} />;
   }
 
   return (

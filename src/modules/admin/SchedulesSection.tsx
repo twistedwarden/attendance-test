@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarClock, Edit, Save, X, Search, Plus, Trash2, BookOpen, Users, Calendar, User } from 'lucide-react';
 import { AdminService } from './api/adminService';
 import Modal from './components/Modal';
+import ConfirmModal from './components/ConfirmModal';
 import ScheduleConflictModal from './components/ScheduleConflictModal';
 import StudentSearchInput from './components/StudentSearchInput';
 import { toast } from 'sonner';
@@ -153,6 +154,12 @@ export default function SchedulesSection() {
   const [formTeacherContact, setFormTeacherContact] = useState('');
   const [formTeacherHireDate, setFormTeacherHireDate] = useState('');
   const [formTeacherStatus, setFormTeacherStatus] = useState('Active');
+  
+  // Confirmation modal states
+  const [confirmSubjectDeleteId, setConfirmSubjectDeleteId] = useState<number | null>(null);
+  const [confirmSectionDeleteId, setConfirmSectionDeleteId] = useState<number | null>(null);
+  const [confirmScheduleDeleteId, setConfirmScheduleDeleteId] = useState<number | null>(null);
+  
   // typeahead state
   const [subjectSug, setSubjectSug] = useState<string[]>([]);
   const [teacherSug, setTeacherSug] = useState<{ id: number; name: string }[]>([]);
@@ -513,15 +520,18 @@ export default function SchedulesSection() {
     }
   };
 
-  const confirmDelete = async (id: number) => {
-    setDeletingId(id);
+  const confirmDelete = (id: number) => {
+    setConfirmScheduleDeleteId(id);
+  };
+
+  const handleScheduleDelete = async () => {
+    if (!confirmScheduleDeleteId) return;
     try {
-      await AdminService.deleteSchedule(id);
+      await AdminService.deleteSchedule(confirmScheduleDeleteId);
       toast.success('Schedule deleted');
-      setDeletingId(null);
+      setConfirmScheduleDeleteId(null);
       load();
     } catch (e: any) {
-      setDeletingId(null);
       toast.error(e?.message || 'Failed to delete schedule');
     }
   };
@@ -610,11 +620,17 @@ export default function SchedulesSection() {
     }
   };
 
-  const confirmSubjectDelete = async (id: number) => {
+  const confirmSubjectDelete = (id: number) => {
+    setConfirmSubjectDeleteId(id);
+  };
+
+  const handleSubjectDelete = async () => {
+    if (!confirmSubjectDeleteId) return;
     try {
-      await AdminService.deleteSubject(id);
+      await AdminService.deleteSubject(confirmSubjectDeleteId);
       toast.success('Subject deleted');
       loadSubjects();
+      setConfirmSubjectDeleteId(null);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to delete subject');
     }
@@ -909,11 +925,17 @@ export default function SchedulesSection() {
     }
   };
 
-  const confirmSectionDelete = async (id: number) => {
+  const confirmSectionDelete = (id: number) => {
+    setConfirmSectionDeleteId(id);
+  };
+
+  const handleSectionDelete = async () => {
+    if (!confirmSectionDeleteId) return;
     try {
-      await AdminService.deleteSection(id);
+      await AdminService.deleteSection(confirmSectionDeleteId);
       toast.success('Section deleted');
       loadSections();
+      setConfirmSectionDeleteId(null);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to delete section');
     }
@@ -1316,15 +1338,43 @@ export default function SchedulesSection() {
                 <input 
                   ref={subjectRef} 
                   value={formSubject} 
-                  onChange={(e) => { setFormSubject(e.target.value); setShowSubjectSug(true); }} 
+                  onChange={(e) => { setFormSubject(e.target.value); setShowSubjectSug(true); setHoverIdx({ field: 'subject', idx: -1 }); }} 
                   onFocus={() => setShowSubjectSug(!!formSubject.trim())} 
                   onBlur={() => setTimeout(() => setShowSubjectSug(false), 150)} 
+                  onKeyDown={(e) => {
+                    if (!showSubjectSug || subjectSug.length === 0) return;
+                    
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setHoverIdx(prev => ({ 
+                        field: 'subject', 
+                        idx: Math.min(prev.idx + 1, subjectSug.length - 1) 
+                      }));
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setHoverIdx(prev => ({ 
+                        field: 'subject', 
+                        idx: Math.max(prev.idx - 1, -1) 
+                      }));
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (hoverIdx.field === 'subject' && hoverIdx.idx >= 0 && hoverIdx.idx < subjectSug.length) {
+                        setFormSubject(subjectSug[hoverIdx.idx]);
+                        setSubjectSug([]);
+                        setShowSubjectSug(false);
+                        setHoverIdx({ field: null, idx: -1 });
+                      }
+                    } else if (e.key === 'Escape') {
+                      setShowSubjectSug(false);
+                      setHoverIdx({ field: null, idx: -1 });
+                    }
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
                 />
                 {subjectSug.length > 0 && showSubjectSug && (
                   <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-sm max-h-48 overflow-auto">
                     {subjectSug.map((s, i) => (
-                      <div key={s + i} className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 ${hoverIdx.field==='subject'&&hoverIdx.idx===i?'bg-gray-50':''}`} onMouseEnter={() => setHoverIdx({ field: 'subject', idx: i })} onClick={() => { setFormSubject(s); setSubjectSug([]); setShowSubjectSug(false); subjectRef.current?.focus(); }}>{s}</div>
+                      <div key={s + i} className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 ${hoverIdx.field==='subject'&&hoverIdx.idx===i?'bg-blue-50 border-l-2 border-blue-500':''}`} onMouseEnter={() => setHoverIdx({ field: 'subject', idx: i })} onClick={() => { setFormSubject(s); setSubjectSug([]); setShowSubjectSug(false); setHoverIdx({ field: null, idx: -1 }); subjectRef.current?.focus(); }}>{s}</div>
                     ))}
                   </div>
                 )}
@@ -1336,15 +1386,43 @@ export default function SchedulesSection() {
                 <input 
                   ref={teacherRef} 
                   value={formTeacher} 
-                  onChange={(e) => { setFormTeacher(e.target.value); setShowTeacherSug(true); }} 
+                  onChange={(e) => { setFormTeacher(e.target.value); setShowTeacherSug(true); setHoverIdx({ field: 'teacher', idx: -1 }); }} 
                   onFocus={() => setShowTeacherSug(!!formTeacher.trim())} 
                   onBlur={() => setTimeout(() => setShowTeacherSug(false), 150)} 
+                  onKeyDown={(e) => {
+                    if (!showTeacherSug || teacherSug.length === 0) return;
+                    
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setHoverIdx(prev => ({ 
+                        field: 'teacher', 
+                        idx: Math.min(prev.idx + 1, teacherSug.length - 1) 
+                      }));
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setHoverIdx(prev => ({ 
+                        field: 'teacher', 
+                        idx: Math.max(prev.idx - 1, -1) 
+                      }));
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (hoverIdx.field === 'teacher' && hoverIdx.idx >= 0 && hoverIdx.idx < teacherSug.length) {
+                        setFormTeacher(teacherSug[hoverIdx.idx].name);
+                        setTeacherSug([]);
+                        setShowTeacherSug(false);
+                        setHoverIdx({ field: null, idx: -1 });
+                      }
+                    } else if (e.key === 'Escape') {
+                      setShowTeacherSug(false);
+                      setHoverIdx({ field: null, idx: -1 });
+                    }
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
                 />
                 {teacherSug.length > 0 && showTeacherSug && (
                   <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-sm max-h-48 overflow-auto">
                     {teacherSug.map((t, i) => (
-                      <div key={t.id} className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 ${hoverIdx.field==='teacher'&&hoverIdx.idx===i?'bg-gray-50':''}`} onMouseEnter={() => setHoverIdx({ field: 'teacher', idx: i })} onClick={() => { setFormTeacher(t.name); setTeacherSug([]); setShowTeacherSug(false); teacherRef.current?.focus(); }}>
+                      <div key={t.id} className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 ${hoverIdx.field==='teacher'&&hoverIdx.idx===i?'bg-blue-50 border-l-2 border-blue-500':''}`} onMouseEnter={() => setHoverIdx({ field: 'teacher', idx: i })} onClick={() => { setFormTeacher(t.name); setTeacherSug([]); setShowTeacherSug(false); setHoverIdx({ field: null, idx: -1 }); teacherRef.current?.focus(); }}>
                         <div className="flex items-center justify-between"><span>{t.id}</span><span className="text-gray-700">{t.name}</span></div>
                       </div>
                     ))}
@@ -1450,11 +1528,46 @@ export default function SchedulesSection() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
               <div className="relative">
-                <input ref={subjectRef} value={formSubject} onChange={(e) => { setFormSubject(e.target.value); setShowSubjectSug(true); }} onFocus={() => setShowSubjectSug(!!formSubject.trim())} onBlur={() => setTimeout(() => setShowSubjectSug(false), 150)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                <input 
+                  ref={subjectRef} 
+                  value={formSubject} 
+                  onChange={(e) => { setFormSubject(e.target.value); setShowSubjectSug(true); setHoverIdx({ field: 'subject', idx: -1 }); }} 
+                  onFocus={() => setShowSubjectSug(!!formSubject.trim())} 
+                  onBlur={() => setTimeout(() => setShowSubjectSug(false), 150)} 
+                  onKeyDown={(e) => {
+                    if (!showSubjectSug || subjectSug.length === 0) return;
+                    
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setHoverIdx(prev => ({ 
+                        field: 'subject', 
+                        idx: Math.min(prev.idx + 1, subjectSug.length - 1) 
+                      }));
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setHoverIdx(prev => ({ 
+                        field: 'subject', 
+                        idx: Math.max(prev.idx - 1, -1) 
+                      }));
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (hoverIdx.field === 'subject' && hoverIdx.idx >= 0 && hoverIdx.idx < subjectSug.length) {
+                        setFormSubject(subjectSug[hoverIdx.idx]);
+                        setSubjectSug([]);
+                        setShowSubjectSug(false);
+                        setHoverIdx({ field: null, idx: -1 });
+                      }
+                    } else if (e.key === 'Escape') {
+                      setShowSubjectSug(false);
+                      setHoverIdx({ field: null, idx: -1 });
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                />
                 {subjectSug.length > 0 && showSubjectSug && (
                   <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-sm max-h-48 overflow-auto">
                     {subjectSug.map((s, i) => (
-                      <div key={s + i} className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 ${hoverIdx.field==='subject'&&hoverIdx.idx===i?'bg-gray-50':''}`} onMouseEnter={() => setHoverIdx({ field: 'subject', idx: i })} onClick={() => { setFormSubject(s); setSubjectSug([]); setShowSubjectSug(false); subjectRef.current?.focus(); }}>{s}</div>
+                      <div key={s + i} className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 ${hoverIdx.field==='subject'&&hoverIdx.idx===i?'bg-blue-50 border-l-2 border-blue-500':''}`} onMouseEnter={() => setHoverIdx({ field: 'subject', idx: i })} onClick={() => { setFormSubject(s); setSubjectSug([]); setShowSubjectSug(false); setHoverIdx({ field: null, idx: -1 }); subjectRef.current?.focus(); }}>{s}</div>
                     ))}
                   </div>
                 )}
@@ -1463,11 +1576,46 @@ export default function SchedulesSection() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Teacher</label>
               <div className="relative">
-                <input ref={teacherRef} value={formTeacher} onChange={(e) => { setFormTeacher(e.target.value); setShowTeacherSug(true); }} onFocus={() => setShowTeacherSug(!!formTeacher.trim())} onBlur={() => setTimeout(() => setShowTeacherSug(false), 150)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                <input 
+                  ref={teacherRef} 
+                  value={formTeacher} 
+                  onChange={(e) => { setFormTeacher(e.target.value); setShowTeacherSug(true); setHoverIdx({ field: 'teacher', idx: -1 }); }} 
+                  onFocus={() => setShowTeacherSug(!!formTeacher.trim())} 
+                  onBlur={() => setTimeout(() => setShowTeacherSug(false), 150)} 
+                  onKeyDown={(e) => {
+                    if (!showTeacherSug || teacherSug.length === 0) return;
+                    
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setHoverIdx(prev => ({ 
+                        field: 'teacher', 
+                        idx: Math.min(prev.idx + 1, teacherSug.length - 1) 
+                      }));
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setHoverIdx(prev => ({ 
+                        field: 'teacher', 
+                        idx: Math.max(prev.idx - 1, -1) 
+                      }));
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (hoverIdx.field === 'teacher' && hoverIdx.idx >= 0 && hoverIdx.idx < teacherSug.length) {
+                        setFormTeacher(teacherSug[hoverIdx.idx].name);
+                        setTeacherSug([]);
+                        setShowTeacherSug(false);
+                        setHoverIdx({ field: null, idx: -1 });
+                      }
+                    } else if (e.key === 'Escape') {
+                      setShowTeacherSug(false);
+                      setHoverIdx({ field: null, idx: -1 });
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                />
                 {teacherSug.length > 0 && showTeacherSug && (
                   <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-sm max-h-48 overflow-auto">
                     {teacherSug.map((t, i) => (
-                      <div key={t.id} className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 ${hoverIdx.field==='teacher'&&hoverIdx.idx===i?'bg-gray-50':''}`} onMouseEnter={() => setHoverIdx({ field: 'teacher', idx: i })} onClick={() => { setFormTeacher(t.name); setTeacherSug([]); setShowTeacherSug(false); teacherRef.current?.focus(); }}>
+                      <div key={t.id} className={`px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 ${hoverIdx.field==='teacher'&&hoverIdx.idx===i?'bg-blue-50 border-l-2 border-blue-500':''}`} onMouseEnter={() => setHoverIdx({ field: 'teacher', idx: i })} onClick={() => { setFormTeacher(t.name); setTeacherSug([]); setShowTeacherSug(false); setHoverIdx({ field: null, idx: -1 }); teacherRef.current?.focus(); }}>
                         <div className="flex items-center justify-between"><span>{t.id}</span><span className="text-gray-700">{t.name}</span></div>
                       </div>
                     ))}
@@ -1972,6 +2120,34 @@ export default function SchedulesSection() {
         onClose={() => setConflictModalOpen(false)}
         conflicts={conflictDetails || []}
         errors={conflictErrors || []}
+      />
+
+      {/* Confirmation Modals */}
+      <ConfirmModal
+        open={confirmSubjectDeleteId !== null}
+        title="Delete Subject?"
+        description="This action cannot be undone. The subject will be permanently removed from the system."
+        confirmText="Delete"
+        onCancel={() => setConfirmSubjectDeleteId(null)}
+        onConfirm={handleSubjectDelete}
+      />
+
+      <ConfirmModal
+        open={confirmSectionDeleteId !== null}
+        title="Delete Section?"
+        description="This action cannot be undone. The section will be permanently removed from the system."
+        confirmText="Delete"
+        onCancel={() => setConfirmSectionDeleteId(null)}
+        onConfirm={handleSectionDelete}
+      />
+
+      <ConfirmModal
+        open={confirmScheduleDeleteId !== null}
+        title="Delete Schedule?"
+        description="This action cannot be undone. The schedule will be permanently removed from the system."
+        confirmText="Delete"
+        onCancel={() => setConfirmScheduleDeleteId(null)}
+        onConfirm={handleScheduleDelete}
       />
     </div>
   );

@@ -439,6 +439,30 @@ export default function EnrollmentReview() {
     }
   };
 
+  const selectAllSchedulesForSection = () => {
+    if (!approveSectionId) {
+      setApproveError('Please select a section first.');
+      return;
+    }
+
+    const sectionSchedules = schedules.filter((sch: any) => String(sch.sectionId) === String(approveSectionId));
+    const scheduleIds = sectionSchedules.map((sch: any) => String(sch.id));
+    
+    setApproveScheduleIds(scheduleIds);
+    setApproveError('');
+    
+    // Show success message (you might want to add toast here)
+    console.log(`Selected all ${scheduleIds.length} schedules for this section.`);
+  };
+
+  const clearAllScheduleAssignments = () => {
+    setApproveScheduleIds([]);
+    setApproveError('');
+    
+    // Show success message (you might want to add toast here)
+    console.log('Cleared all schedule assignments.');
+  };
+
   const getStatusBadge = (status: string) => {
     const styles = {
       pending: 'bg-yellow-100 text-yellow-800',
@@ -955,7 +979,38 @@ export default function EnrollmentReview() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Assign Schedules</label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Assign Schedules</label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={selectAllSchedulesForSection}
+                        disabled={!approveSectionId}
+                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Select All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearAllScheduleAssignments}
+                        disabled={approveScheduleIds.length === 0}
+                        className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                  </div>
+                  {approveSectionId && (
+                    <div className="text-xs text-gray-600 mb-2">
+                      {approveScheduleIds.length > 0 ? (
+                        <span className="text-blue-600">
+                          {approveScheduleIds.length} schedule{approveScheduleIds.length !== 1 ? 's' : ''} selected
+                        </span>
+                      ) : (
+                        <span>No schedules selected</span>
+                      )}
+                    </div>
+                  )}
                   <div className={`border border-gray-300 rounded-lg max-h-40 overflow-y-auto divide-y ${!approveSectionId ? 'opacity-50 pointer-events-none' : ''}`}> 
                     {schedules
                       .filter((sch: any) => !approveSectionId || String(sch.sectionId) === String(approveSectionId))

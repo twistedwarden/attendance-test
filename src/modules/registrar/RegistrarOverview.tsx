@@ -17,7 +17,11 @@ interface OverviewStats {
   }>;
 }
 
-export default function RegistrarOverview() {
+interface RegistrarOverviewProps {
+  onSectionChange: (section: string) => void;
+}
+
+export default function RegistrarOverview({ onSectionChange }: RegistrarOverviewProps) {
   const [stats, setStats] = useState<OverviewStats>({
     totalStudents: 0,
     pendingEnrollments: 0,
@@ -199,7 +203,10 @@ export default function RegistrarOverview() {
               : 'No pending enrollments at this time.'
             }
           </p>
-          <button className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
+          <button 
+            onClick={() => onSectionChange('enrollments')}
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+          >
             Review Enrollments
           </button>
         </div>

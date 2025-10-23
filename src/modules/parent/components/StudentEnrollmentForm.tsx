@@ -374,14 +374,40 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
                   <label htmlFor="nationality" className="block text-sm font-medium text-gray-700 mb-2">
                     Nationality
                   </label>
-                  <input
+                  <select
                     id="nationality"
-                    type="text"
                     value={enrollmentData.nationality}
                     onChange={(e) => setEnrollmentData(prev => ({ ...prev, nationality: e.target.value }))}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Filipino"
-                  />
+                  >
+                    <option value="Filipino">Filipino</option>
+                    <option value="American">American</option>
+                    <option value="British">British</option>
+                    <option value="Canadian">Canadian</option>
+                    <option value="Australian">Australian</option>
+                    <option value="Japanese">Japanese</option>
+                    <option value="Korean">Korean</option>
+                    <option value="Chinese">Chinese</option>
+                    <option value="Indian">Indian</option>
+                    <option value="Thai">Thai</option>
+                    <option value="Vietnamese">Vietnamese</option>
+                    <option value="Indonesian">Indonesian</option>
+                    <option value="Malaysian">Malaysian</option>
+                    <option value="Singaporean">Singaporean</option>
+                    <option value="German">German</option>
+                    <option value="French">French</option>
+                    <option value="Italian">Italian</option>
+                    <option value="Spanish">Spanish</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  {enrollmentData.nationality === 'Other' && (
+                    <input
+                      type="text"
+                      placeholder="Please specify your nationality"
+                      onChange={(e) => setEnrollmentData(prev => ({ ...prev, nationality: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mt-2"
+                    />
+                  )}
                 </div>
               </div>
 

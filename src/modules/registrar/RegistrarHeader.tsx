@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, Bell, User, LogOut } from 'lucide-react';
+import { Menu, Bell, LogOut } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import LogoutModal from './components/LogoutModal';
 import NotificationBell from '../shared/NotificationBell';
@@ -53,10 +53,6 @@ export default function RegistrarHeader({ onMobileMenuToggle }: RegistrarHeaderP
             <div className="text-right">
               <p className="text-sm font-medium text-gray-900">{user?.name}</p>
               <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
-            </div>
-            
-            <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center">
-              <User className="w-4 h-4 text-white" />
             </div>
             
             <button

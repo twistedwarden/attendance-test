@@ -2,10 +2,36 @@ import { UserPlus, AlertCircle, LogOut } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { useState } from 'react';
 import StudentEnrollmentForm from './StudentEnrollmentForm';
+import { Parent } from '../api/parentService';
 
-export default function NoStudentsMessage({ onStudentEnrolled, enrollmentEnabled = true }: { onStudentEnrolled: () => void; enrollmentEnabled?: boolean }) {
+interface NoStudentsMessageProps {
+  onStudentEnrolled: () => void;
+  enrollmentEnabled?: boolean;
+  parent?: Parent | null;
+}
+
+export default function NoStudentsMessage({ onStudentEnrolled, enrollmentEnabled = true, parent }: NoStudentsMessageProps) {
   const { logout } = useAuth();
   const [showEnrollmentForm, setShowEnrollmentForm] = useState(false);
+
+  // Function to get appropriate text based on relationship
+  const getRelationshipText = () => {
+    if (!parent?.relationship) return { students: 'student', child: 'child' };
+    
+    const relationship = parent.relationship.toLowerCase();
+    
+    if (relationship.includes('mother') || relationship.includes('father') || relationship.includes('parent')) {
+      return { students: 'child', child: 'child' };
+    } else if (relationship.includes('guardian')) {
+      return { students: 'ward', child: 'ward' };
+    } else if (relationship.includes('aunt') || relationship.includes('uncle')) {
+      return { students: 'niece/nephew', child: 'niece/nephew' };
+    } else if (relationship.includes('grandmother') || relationship.includes('grandfather') || relationship.includes('grandparent')) {
+      return { students: 'grandchild', child: 'grandchild' };
+    } else {
+      return { students: 'student', child: 'student' };
+    }
+  };
 
   if (showEnrollmentForm) {
     return <StudentEnrollmentForm onBack={() => setShowEnrollmentForm(false)} onSuccess={onStudentEnrolled} />;
@@ -22,13 +48,13 @@ export default function NoStudentsMessage({ onStudentEnrolled, enrollmentEnabled
           
           {/* Title */}
           <h2 className="text-2xl font-bold text-gray-900 mb-4">
-            No Students Linked
+            No {getRelationshipText().students.charAt(0).toUpperCase() + getRelationshipText().students.slice(1)} Linked
           </h2>
           
           {/* Description */}
           <p className="text-gray-600 mb-6">
-            You don't have any students linked to your parent account yet. 
-            You can enroll your child(ren) using the form below.
+            You don't have any {getRelationshipText().students} linked to your account yet. 
+            You can enroll your {getRelationshipText().child} using the form below.
           </p>
           
           {/* Enrollment disabled notice */}

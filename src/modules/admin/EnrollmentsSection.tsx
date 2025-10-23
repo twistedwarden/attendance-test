@@ -216,6 +216,27 @@ export default function EnrollmentsSection() {
     setScheduleAssignments(updated);
   };
 
+  const selectAllSchedulesForSection = () => {
+    if (!selectedSectionId) {
+      toast.error('Please select a section first.');
+      return;
+    }
+
+    const sectionSchedules = schedules.filter(s => s.sectionId === selectedSectionId);
+    const scheduleIds = sectionSchedules.map(s => s.id);
+    
+    // Create assignments for all schedules in the section
+    const newAssignments = scheduleIds.map(scheduleId => ({ scheduleId }));
+    setScheduleAssignments(newAssignments);
+    
+    toast.success(`Selected all ${scheduleIds.length} schedules for this section.`);
+  };
+
+  const clearAllScheduleAssignments = () => {
+    setScheduleAssignments([]);
+    toast.success('Cleared all schedule assignments.');
+  };
+
   const handleApprove = async () => {
     if (!selectedEnrollment) {
       console.error('No selected enrollment for approval');
@@ -892,7 +913,38 @@ export default function EnrollmentsSection() {
             </div>
 
             <div className="mb-2">
-              <label className="block text-sm font-medium text-gray-700">Schedule Assignments (Optional)</label>
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-gray-700">Schedule Assignments (Optional)</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={selectAllSchedulesForSection}
+                    disabled={!selectedSectionId}
+                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearAllScheduleAssignments}
+                    disabled={scheduleAssignments.length === 0}
+                    className="px-3 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+              {selectedSectionId && (
+                <div className="text-xs text-gray-600 mt-1">
+                  {scheduleAssignments.length > 0 ? (
+                    <span className="text-blue-600">
+                      {scheduleAssignments.length} schedule{scheduleAssignments.length !== 1 ? 's' : ''} selected
+                    </span>
+                  ) : (
+                    <span>No schedules selected</span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className={`border border-gray-300 rounded-lg max-h-48 overflow-y-auto divide-y ${!selectedSectionId ? 'opacity-50 pointer-events-none' : ''}`}>

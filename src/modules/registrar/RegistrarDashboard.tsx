@@ -39,7 +39,7 @@ export default function RegistrarDashboard() {
   const renderContent = () => {
     switch (activeSection) {
       case 'overview':
-        return <RegistrarOverview />;
+        return <RegistrarOverview onSectionChange={setActiveSection} />;
       case 'enrollments':
         return <EnrollmentReview />;
       case 'students':
@@ -51,7 +51,7 @@ export default function RegistrarDashboard() {
       case 'settings':
         return <AccountSettings showNameField={false} />;
       default:
-        return <RegistrarOverview />;
+        return <RegistrarOverview onSectionChange={setActiveSection} />;
     }
   };
 

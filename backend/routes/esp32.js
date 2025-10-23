@@ -115,12 +115,26 @@ router.get('/devices/:deviceId/status', async (req, res) => {
       AND Timestamp >= DATE_SUB(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), INTERVAL 24 HOUR)
     `, [deviceId]);
     
+    // Determine if device is online based on status and last seen time
+    const deviceData = device[0];
+    const lastSeen = new Date(deviceData.LastSeen);
+    const now = new Date();
+    const timeDiff = now.getTime() - lastSeen.getTime();
+    
+    // Device is online if status is active, regardless of last seen time
+    // Only consider offline if status is inactive/maintenance OR last seen is very old (>30 minutes)
+    const isOnline = deviceData.Status === 'active' && timeDiff < 30 * 60 * 1000; // 30 minutes threshold
+    
     res.json({
       success: true,
       data: {
-        device: device[0],
+        device: deviceData,
         recentOperations: operations,
-        statistics: stats[0]
+        statistics: stats[0],
+        health: {
+          connection: isOnline ? 'online' : 'offline',
+          lastPing: deviceData.LastSeen
+        }
       }
     });
   } catch (error) {

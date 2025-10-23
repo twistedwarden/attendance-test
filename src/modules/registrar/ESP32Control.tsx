@@ -17,6 +17,7 @@ import {
   Fingerprint
 } from 'lucide-react';
 import { ESP32Service, ESP32Device, DeviceStatus, EnrollmentStatus, EnrolledStudent } from './api/esp32Service';
+import ConfirmModal from '../admin/components/ConfirmModal';
 // Simple Button component for ESP32 control
 const Button = ({ children, onClick, disabled, className, size, variant, ...props }: any) => (
   <button
@@ -65,6 +66,8 @@ export default function ESP32Control() {
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
   // Destructive confirmation modal
   const [confirmModal, setConfirmModal] = useState<{open: boolean; action: 'reset'|'clear_all'|null; text: string}>({open:false, action:null, text:''});
+  // Fingerprint delete confirmation
+  const [confirmDeleteFingerprint, setConfirmDeleteFingerprint] = useState<{open: boolean; studentId: string; studentName: string}>({open: false, studentId: '', studentName: ''});
 
   useEffect(() => {
     loadDevices();
@@ -313,6 +316,27 @@ export default function ESP32Control() {
       return;
     }
 
+    // Find the student name for confirmation
+    const student = allStudents.find(s => s.id === studentId);
+    const studentName = student ? student.name : `Student ID ${studentId}`;
+    
+    // Show confirmation modal instead of directly deleting
+    setConfirmDeleteFingerprint({
+      open: true,
+      studentId: deleteStudentId,
+      studentName: studentName
+    });
+  };
+
+  const handleConfirmDeleteFingerprint = async () => {
+    if (!selectedDevice || !confirmDeleteFingerprint.studentId) return;
+    
+    const studentId = parseInt(confirmDeleteFingerprint.studentId);
+    if (isNaN(studentId)) {
+      setError('Please enter a valid student ID');
+      return;
+    }
+
     try {
       setActionLoading('delete');
       // Send delete command to ESP32
@@ -323,6 +347,7 @@ export default function ESP32Control() {
       
       setShowDeleteModal(false);
       setDeleteStudentId('');
+      setConfirmDeleteFingerprint({open: false, studentId: '', studentName: ''});
       await loadFingerprints(selectedDevice.DeviceID);
       await loadEnrollmentStatus(selectedDevice.DeviceID);
       await loadAvailableFingerprintIds(selectedDevice.DeviceID);
@@ -1030,6 +1055,16 @@ export default function ESP32Control() {
           </div>
         </div>
       )}
+
+      {/* Fingerprint Delete Confirmation Modal */}
+      <ConfirmModal
+        open={confirmDeleteFingerprint.open}
+        title="Delete Fingerprint?"
+        description={`Are you sure you want to delete the fingerprint for ${confirmDeleteFingerprint.studentName}? This action cannot be undone.`}
+        confirmText="Delete"
+        onCancel={() => setConfirmDeleteFingerprint({open: false, studentId: '', studentName: ''})}
+        onConfirm={handleConfirmDeleteFingerprint}
+      />
     </div>
   );
 }

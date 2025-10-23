@@ -31,6 +31,27 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
     setIsEditing(false);
   };
 
+  // Function to get appropriate section title based on relationship and count
+  const getStudentsSectionTitle = () => {
+    if (!parentData?.relationship) return students.length === 1 ? 'My Student' : 'My Students';
+    
+    const relationship = parentData.relationship.toLowerCase();
+    const isSingular = students.length === 1;
+    
+    if (relationship.includes('mother') || relationship.includes('father') || relationship.includes('parent')) {
+      return isSingular ? 'My Child' : 'My Children';
+    } else if (relationship.includes('guardian')) {
+      return isSingular ? 'My Ward' : 'My Wards';
+    } else if (relationship.includes('aunt') || relationship.includes('uncle')) {
+      return isSingular ? 'My Niece/Nephew' : 'My Nieces/Nephews';
+    } else if (relationship.includes('grandmother') || relationship.includes('grandfather') || relationship.includes('grandparent')) {
+      return isSingular ? 'My Grandchild' : 'My Grandchildren';
+    } else {
+      // Default fallback for other relationships
+      return isSingular ? 'My Student' : 'My Students';
+    }
+  };
+
   if (!parentData) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -80,7 +101,7 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center space-x-2">
             <User size={18} />
-            <span>Parent Information</span>
+            <span>{parentData?.relationship || 'Parent'} Information</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -183,7 +204,7 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center space-x-2">
             <Users size={18} />
-            <span>My Students</span>
+            <span>{getStudentsSectionTitle()}</span>
           </CardTitle>
         </CardHeader>
         <CardContent>

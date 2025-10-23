@@ -37,91 +37,86 @@ export default function RegistrarSidebar({
 
       {/* Sidebar */}
       <div className={`
-        fixed top-0 left-0 h-screen w-64 bg-white shadow-sm border-r border-gray-200 z-50 transform transition-transform duration-200 ease-in-out overflow-y-auto scrollbar-hide
+        fixed top-0 left-0 h-screen w-64 bg-white shadow-sm border-r border-gray-200 z-50 transform transition-transform duration-200 ease-in-out
         ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200 lg:hidden">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center">
-                <ClipboardList className="w-5 h-5 text-white" />
+          <div className="p-6 pb-24 flex-1 overflow-y-auto scrollbar-hide">
+            {/* Mobile Close Button */}
+            <div className="flex items-center justify-between mb-8 lg:hidden">
+              <div className="flex items-center space-x-3">
+                <div className="bg-blue-600 p-2 rounded-lg">
+                  <ClipboardList className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Registrar</h2>
+                  <p className="text-sm text-gray-500">Management Portal</p>
+                </div>
+              </div>
+              <button
+                onClick={onMobileClose}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Desktop Logo */}
+            <div className="hidden lg:flex items-center space-x-3 mb-8">
+              <div className="bg-blue-600 p-2 rounded-lg">
+                <ClipboardList className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-gray-900">Registrar</h1>
-                <p className="text-xs text-gray-500">Management Portal</p>
+                <h2 className="text-lg font-bold text-gray-900">Registrar</h2>
+                <p className="text-sm text-gray-500">Management Portal</p>
               </div>
             </div>
-            <button
-              onClick={onMobileClose}
-              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
-          </div>
 
-          {/* Desktop Logo */}
-          <div className="hidden lg:flex items-center space-x-3 p-6 border-b border-gray-200">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center">
-              <ClipboardList className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">Registrar</h1>
-              <p className="text-xs text-gray-500">Management Portal</p>
-            </div>
-          </div>
-
-          {/* User Info */}
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center">
-                <UserCheck className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="font-semibold text-gray-900">{user?.name}</p>
-                <p className="text-sm text-gray-500 capitalize">{user?.role}</p>
+            {/* User Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="text-sm">
+                <p className="font-medium text-gray-900">{user?.name}</p>
+                <p className="text-blue-600 capitalize">{user?.role}</p>
               </div>
             </div>
+
+            <nav className="space-y-2">
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeSection === item.id;
+                
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => onSectionChange(item.id)}
+                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                      isActive
+                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className={`h-5 w-5 ${
+                      isActive ? 'text-blue-600' : 'text-gray-400'
+                    }`} />
+                    <div>
+                      <p className="font-medium">{item.label}</p>
+                      <p className="text-xs opacity-75">{item.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </nav>
           </div>
 
-          {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-2">
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeSection === item.id;
-              
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    onSectionChange(item.id);
-                    onMobileClose();
-                  }}
-                  className={`
-                    w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-all duration-200
-                    ${isActive 
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-sm' 
-                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-                    }
-                  `}
-                >
-                  <Icon className={`w-5 h-5 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
-                  <div className="flex-1">
-                    <p className="font-medium">{item.label}</p>
-                    <p className="text-xs text-gray-500">{item.description}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* Footer */}
+          {/* System Stats */}
           <div className="p-4 border-t border-gray-200">
-            <div className="flex items-center space-x-3 p-3 rounded-lg bg-gray-50">
-              <Settings className="w-4 h-4 text-gray-500" />
-              <div>
-                <p className="text-sm font-medium text-gray-700">System Status</p>
-                <p className="text-xs text-green-600">All systems operational</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">System Status</span>
+                <div className="flex items-center space-x-1">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-green-600 font-medium">Online</span>
+                </div>
               </div>
             </div>
           </div>

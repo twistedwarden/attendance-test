@@ -28,6 +28,25 @@ interface SidebarProps {
 const Sidebar = ({ selectedStudent, onStudentChange, students, parent, isMobileOpen = false, onMobileClose, onEnrollNewStudent, enrollmentEnabled = true }: SidebarProps) => {
   const [isStudentDropdownOpen, setIsStudentDropdownOpen] = useState(false);
 
+  // Function to get appropriate enrollment text based on relationship
+  const getEnrollmentText = () => {
+    if (!parent?.relationship) return { button: 'Enroll New Student', subtitle: students.length === 0 ? 'Add your child' : 'Add another child' };
+    
+    const relationship = parent.relationship.toLowerCase();
+    
+    if (relationship.includes('mother') || relationship.includes('father') || relationship.includes('parent')) {
+      return { button: 'Enroll New Student', subtitle: students.length === 0 ? 'Add your child' : 'Add another child' };
+    } else if (relationship.includes('guardian')) {
+      return { button: 'Enroll New Student', subtitle: students.length === 0 ? 'Add your ward' : 'Add another ward' };
+    } else if (relationship.includes('aunt') || relationship.includes('uncle')) {
+      return { button: 'Enroll New Student', subtitle: students.length === 0 ? 'Add your niece/nephew' : 'Add another niece/nephew' };
+    } else if (relationship.includes('grandmother') || relationship.includes('grandfather') || relationship.includes('grandparent')) {
+      return { button: 'Enroll New Student', subtitle: students.length === 0 ? 'Add your grandchild' : 'Add another grandchild' };
+    } else {
+      return { button: 'Enroll New Student', subtitle: students.length === 0 ? 'Add your student' : 'Add another student' };
+    }
+  };
+
   const navigationItems = [
     {
       name: 'Dashboard',
@@ -186,9 +205,9 @@ const Sidebar = ({ selectedStudent, onStudentChange, students, parent, isMobileO
                         >
                           <div className="flex items-center space-x-2">
                             <UserPlus size={16} className="text-blue-600" />
-                            <span className="font-medium text-blue-700">Enroll New Student</span>
+                            <span className="font-medium text-blue-700">{getEnrollmentText().button}</span>
                           </div>
-                          <p className="text-sm text-blue-600 mt-1">Add another child</p>
+                          <p className="text-sm text-blue-600 mt-1">{getEnrollmentText().subtitle}</p>
                         </button>
                       </span>
                     )}
@@ -236,8 +255,8 @@ const Sidebar = ({ selectedStudent, onStudentChange, students, parent, isMobileO
                 >
                   <UserPlus className="h-5 w-5 text-blue-600" />
                   <div>
-                    <p className="font-medium">Enroll New Student</p>
-                    <p className="text-xs opacity-75">Add another child</p>
+                    <p className="font-medium">{getEnrollmentText().button}</p>
+                    <p className="text-xs opacity-75">{getEnrollmentText().subtitle}</p>
                   </div>
                 </button>
               </span>
@@ -379,8 +398,8 @@ const Sidebar = ({ selectedStudent, onStudentChange, students, parent, isMobileO
             >
               <UserPlus className="h-5 w-5 text-blue-600" />
               <div>
-                <p className="font-medium">Enroll New Student</p>
-                <p className="text-xs opacity-75">Add another child</p>
+                <p className="font-medium">{getEnrollmentText().button}</p>
+                <p className="text-xs opacity-75">{getEnrollmentText().subtitle}</p>
               </div>
             </button>
           </span>

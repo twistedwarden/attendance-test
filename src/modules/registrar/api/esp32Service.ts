@@ -29,6 +29,10 @@ export interface DeviceStatus {
     failedOperations: number;
     avgResponseTime: number;
   };
+  health?: {
+    connection: 'online' | 'offline';
+    lastPing?: string;
+  };
 }
 
 export interface EnrolledStudent {
