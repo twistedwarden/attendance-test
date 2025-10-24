@@ -7,6 +7,7 @@ export default function DeviceStatus() {
   const [status, setStatus] = useState<ESP32DeviceStatus | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{open: boolean; action: 'restart'|'test_connection'|'reset'|'clear_all'|null; text: string}>({open:false, action:null, text:''});
 
   useEffect(() => {
     let mounted = true;
@@ -66,16 +67,20 @@ export default function DeviceStatus() {
   }, [status]);
 
 
-  const handleAction = async (command: 'restart' | 'test_connection' | 'reset' | 'clear_all') => {
-    if (!selectedDevice) return;
+  const confirmAction = async () => {
+    if (!selectedDevice || !confirmModal.action) return;
+    const required = selectedDevice.DeviceID;
+    if (confirmModal.text !== required) return;
+    
     try {
-      setActionLoading(command);
-      await ESP32Service.sendDeviceCommand(selectedDevice.DeviceID, command);
+      setActionLoading(confirmModal.action);
+      await ESP32Service.sendDeviceCommand(selectedDevice.DeviceID, confirmModal.action);
       // refresh status after actions
       const s = await ESP32Service.getDeviceStatus(selectedDevice.DeviceID);
       setStatus(s);
+      setConfirmModal({ open: false, action: null, text: '' });
     } catch (e: any) {
-      setError(e?.message || `Failed to ${command}`);
+      setError(e?.message || `Failed to ${confirmModal.action}`);
     } finally {
       setActionLoading(null);
     }
@@ -153,11 +158,7 @@ export default function DeviceStatus() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <button
-              onClick={() => {
-                if (confirm('Are you sure you want to restart the device? This will temporarily disconnect the device.')) {
-                  handleAction('restart');
-                }
-              }}
+              onClick={() => setConfirmModal({ open: true, action: 'restart', text: '' })}
               disabled={!selectedDevice || !online || actionLoading === 'restart'}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               title={!online ? 'Device must be online to control' : ''}
@@ -166,11 +167,7 @@ export default function DeviceStatus() {
               <span>Restart</span>
             </button>
             <button
-              onClick={() => {
-                if (confirm('Are you sure you want to test the device connection? This will send a test command to the device.')) {
-                  handleAction('test_connection');
-                }
-              }}
+              onClick={() => setConfirmModal({ open: true, action: 'test_connection', text: '' })}
               disabled={!selectedDevice || !online || actionLoading === 'test_connection'}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
               title={!online ? 'Device must be online to control' : ''}
@@ -179,11 +176,7 @@ export default function DeviceStatus() {
               <span>Test</span>
             </button>
             <button
-              onClick={() => {
-                if (confirm('Are you sure you want to reset the device? This will clear all fingerprints and reset the device to factory settings.')) {
-                  handleAction('reset');
-                }
-              }}
+              onClick={() => setConfirmModal({ open: true, action: 'reset', text: '' })}
               disabled={!selectedDevice || !online || actionLoading === 'reset'}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50"
               title={!online ? 'Device must be online to control' : ''}
@@ -192,11 +185,7 @@ export default function DeviceStatus() {
               <span>Reset</span>
             </button>
             <button
-              onClick={() => {
-                if (confirm('Are you sure you want to clear all fingerprints? This will remove all enrolled fingerprints from the device and database.')) {
-                  handleAction('clear_all');
-                }
-              }}
+              onClick={() => setConfirmModal({ open: true, action: 'clear_all', text: '' })}
               disabled={!selectedDevice || !online || actionLoading === 'clear_all'}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               title={!online ? 'Device must be online to control' : ''}
@@ -233,6 +222,56 @@ export default function DeviceStatus() {
           </div>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {confirmModal.open && selectedDevice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-[520px] max-w-[95vw]">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {confirmModal.action === 'restart' ? 'Confirm Device Restart' :
+               confirmModal.action === 'test_connection' ? 'Confirm Connection Test' :
+               confirmModal.action === 'reset' ? 'Confirm Factory Reset' : 'Confirm Clear All Fingerprints'}
+            </h3>
+            <p className="text-sm text-gray-700 mb-4">
+              {confirmModal.action === 'restart'
+                ? 'This will restart the device. The device will temporarily disconnect and may take a few minutes to come back online.'
+                : confirmModal.action === 'test_connection'
+                ? 'This will send a test command to the device to verify connectivity and functionality.'
+                : confirmModal.action === 'reset'
+                ? 'This will clear all templates from the sensor and database mappings, and restart the device.'
+                : 'This will clear all fingerprint templates from the database and instruct the sensor to clear as well.'}
+            </p>
+            <p className="text-sm text-gray-700 mb-2">Type the device ID to confirm: <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{selectedDevice.DeviceID}</span></p>
+            <input
+              type="text"
+              value={confirmModal.text}
+              onChange={(e) => setConfirmModal({ ...confirmModal, text: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+              placeholder={selectedDevice.DeviceID}
+            />
+            <div className="flex justify-end space-x-3 mt-4">
+              <button 
+                onClick={() => setConfirmModal({ open: false, action: null, text: '' })} 
+                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmAction}
+                disabled={confirmModal.text !== selectedDevice.DeviceID || !!actionLoading}
+                className={`px-4 py-2 text-white rounded hover:opacity-90 disabled:opacity-50 ${
+                  confirmModal.action === 'restart' ? 'bg-blue-600 hover:bg-blue-700' :
+                  confirmModal.action === 'test_connection' ? 'bg-green-600 hover:bg-green-700' :
+                  confirmModal.action === 'reset' ? 'bg-yellow-600 hover:bg-yellow-700' :
+                  'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {actionLoading ? 'Working...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
