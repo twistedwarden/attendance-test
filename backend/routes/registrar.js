@@ -213,7 +213,7 @@ router.get('/enrollments', authenticateToken, requireRole(['registrar', 'admin']
       LEFT JOIN useraccount up ON p.UserID = up.UserID
       LEFT JOIN enrollment_review er ON sr.StudentID = er.StudentID
       LEFT JOIN useraccount ua ON er.ReviewedByUserID = ua.UserID
-      LEFT JOIN enrollment_documents ed ON sr.StudentID = ed.StudentID
+      LEFT JOIN enrollment_documents ed ON sr.StudentID = ed.StudentID AND ed.FileData IS NULL
       LEFT JOIN enrollment_documents ed_docs ON sr.StudentID = ed_docs.StudentID AND ed_docs.FileData IS NOT NULL
       LEFT JOIN section sec ON sr.SectionID = sec.SectionID
       ${whereClause}

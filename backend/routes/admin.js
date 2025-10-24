@@ -1991,7 +1991,7 @@ router.get('/enrollments', async (req, res) => {
             LEFT JOIN useraccount up ON p.UserID = up.UserID
             LEFT JOIN enrollment_review er ON sr.StudentID = er.StudentID
             LEFT JOIN useraccount ua ON er.ReviewedByUserID = ua.UserID
-            LEFT JOIN enrollment_documents ed ON sr.StudentID = ed.StudentID
+            LEFT JOIN enrollment_documents ed ON sr.StudentID = ed.StudentID AND ed.FileData IS NULL
             LEFT JOIN enrollment_documents ed_docs ON sr.StudentID = ed_docs.StudentID AND ed_docs.FileData IS NOT NULL
             LEFT JOIN section sec ON sr.SectionID = sec.SectionID
             ${whereClause}
@@ -2083,21 +2083,27 @@ router.get('/enrollments/:id', async (req, res) => {
                 er.Notes as reviewNotes,
                 er.ReviewedByUserID as reviewedBy,
                 ua.Username as reviewedByUsername,
-                ed.Documents as documents,
-                ed.AdditionalInfo as additionalInfo,
-                ed.SubmittedByUserID as submittedBy,
-                ed.DocumentType as documentType,
-                ed.FileName as fileName,
-                ed.FileSize as fileSize,
-                ed.MimeType as mimeType
+                MAX(ed.Documents) as documents,
+                MAX(ed.AdditionalInfo) as additionalInfo,
+                MAX(ed.SubmittedByUserID) as submittedBy,
+                GROUP_CONCAT(
+                    CONCAT(
+                        ed_docs.DocumentID, ':', 
+                        ed_docs.FileName, ':', 
+                        ed_docs.FileSize, ':', 
+                        ed_docs.MimeType
+                    ) SEPARATOR '|'
+                ) as documentList
             FROM studentrecord sr
             LEFT JOIN parent p ON sr.ParentID = p.ParentID
             LEFT JOIN useraccount up ON p.UserID = up.UserID
             LEFT JOIN enrollment_review er ON sr.StudentID = er.StudentID
             LEFT JOIN useraccount ua ON er.ReviewedByUserID = ua.UserID
-            LEFT JOIN enrollment_documents ed ON sr.StudentID = ed.StudentID
+            LEFT JOIN enrollment_documents ed ON sr.StudentID = ed.StudentID AND ed.FileData IS NULL
+            LEFT JOIN enrollment_documents ed_docs ON sr.StudentID = ed_docs.StudentID AND ed_docs.FileData IS NOT NULL
             LEFT JOIN section sec ON sr.SectionID = sec.SectionID
             WHERE sr.StudentID = ?
+            GROUP BY sr.StudentID
         `;
 
         const [enrollments] = await pool.execute(query, [id]);
