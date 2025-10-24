@@ -212,10 +212,23 @@ router.post('/subject-attendance', async (req, res) => {
       return res.json({ success: true, data: { subjectAttendanceId: existingRows[0].SubjectAttendanceID, status } });
     }
 
+    // Get active school year
+    const [activeYearResult] = await pool.execute(
+      'SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1'
+    );
+    const activeSchoolYearId = activeYearResult.length > 0 ? activeYearResult[0].SchoolYearID : null;
+
+    if (!activeSchoolYearId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No active school year found. Please contact administrator.' 
+      });
+    }
+
     // Insert
     const [ins] = await pool.execute(
-      `INSERT INTO subjectattendance (StudentID, SubjectID, Date, Status, ValidatedBy) VALUES (?, ?, ?, ?, ?)`,
-      [Number(studentId), Number(subjectId), date, status, teacherUserId]
+      `INSERT INTO subjectattendance (StudentID, SubjectID, Date, Status, ValidatedBy, SchoolYearID) VALUES (?, ?, ?, ?, ?, ?)`,
+      [Number(studentId), Number(subjectId), date, status, teacherUserId, activeSchoolYearId]
     );
     return res.status(201).json({ success: true, data: { subjectAttendanceId: ins.insertId, status } });
   } catch (error) {
