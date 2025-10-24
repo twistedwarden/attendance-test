@@ -1320,11 +1320,31 @@ router.post('/upload-documents', authenticateToken, requireRole(['parent', 'regi
         const shouldCompress = compressionRatio > 10;
         const finalData = shouldCompress ? compressedData : file.buffer;
         
-        // Store file in database (StudentID can be NULL initially)
+        // Store file in database
+        let studentId = req.body.studentId || null;
+        
+        // If no studentId provided and we're in a parent enrollment context,
+        // we need to handle the case where StudentID is NOT NULL in the database
+        if (!studentId && req.user.role === 'parent') {
+          // For parent uploads during enrollment, we'll use a temporary approach
+          // Create a temporary student record that will be updated later
+          try {
+            const [tempStudent] = await pool.execute(
+              'INSERT INTO studentrecord (FullName, ParentID, CreatedBy, EnrollmentStatus) VALUES (?, ?, ?, ?)',
+              ['TEMP_STUDENT', req.user.parentId, req.user.userId, 'pending']
+            );
+            studentId = tempStudent.insertId;
+          } catch (tempError) {
+            console.error('Error creating temporary student:', tempError);
+            // If we can't create a temp student, try with NULL anyway
+            studentId = null;
+          }
+        }
+        
         const [result] = await pool.execute(
           'INSERT INTO enrollment_documents (StudentID, SubmittedByUserID, FileData, FileName, FileSize, MimeType, IsCompressed, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
           [
-            req.body.studentId || null, // Can be NULL for initial uploads
+            studentId,
             req.user.userId,
             finalData,
             file.originalname,

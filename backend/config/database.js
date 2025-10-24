@@ -1129,6 +1129,28 @@ export const storeEnrollmentDocuments = async (studentId, enrollmentData) => {
         `UPDATE enrollment_documents SET StudentID = ? WHERE DocumentID IN (${placeholders}) AND SubmittedByUserID = ?`,
         [studentId, ...enrollmentData.documentIds, enrollmentData.submittedByUserId]
       );
+      
+      // Also update any temporary student records that were created during upload
+      // Find documents that are linked to temporary students for this user
+      const [tempDocs] = await pool.execute(
+        'SELECT DocumentID FROM enrollment_documents WHERE StudentID IN (SELECT StudentID FROM studentrecord WHERE FullName = "TEMP_STUDENT" AND CreatedBy = ?) AND SubmittedByUserID = ?',
+        [enrollmentData.submittedByUserId, enrollmentData.submittedByUserId]
+      );
+      
+      if (tempDocs.length > 0) {
+        const tempDocIds = tempDocs.map(doc => doc.DocumentID);
+        const tempPlaceholders = tempDocIds.map(() => '?').join(',');
+        await pool.execute(
+          `UPDATE enrollment_documents SET StudentID = ? WHERE DocumentID IN (${tempPlaceholders})`,
+          [studentId, ...tempDocIds]
+        );
+        
+        // Clean up temporary student records
+        await pool.execute(
+          'DELETE FROM studentrecord WHERE FullName = "TEMP_STUDENT" AND CreatedBy = ?',
+          [enrollmentData.submittedByUserId]
+        );
+      }
     }
     
     // Create a record for additional info (if any)
