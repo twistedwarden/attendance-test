@@ -2118,6 +2118,16 @@ router.post('/enrollments/:id/approve', async (req, res) => {
         try {
             await connection.beginTransaction();
 
+            // Get active school year
+            const [activeYearResult] = await connection.execute(
+                'SELECT SchoolYearID as schoolYearId FROM schoolyear WHERE IsActive = TRUE LIMIT 1'
+            );
+            const activeYear = activeYearResult.length > 0 ? activeYearResult[0] : null;
+
+            if (!activeYear) {
+                throw new Error('No active school year found');
+            }
+
             // If sectionId provided, assign section to the student first
             if (sectionId) {
                 // validate section exists
@@ -2268,6 +2278,16 @@ router.post('/enrollments/:id/decline', async (req, res) => {
         
         try {
             await connection.beginTransaction();
+
+            // Get active school year
+            const [activeYearResult] = await connection.execute(
+                'SELECT SchoolYearID as schoolYearId FROM schoolyear WHERE IsActive = TRUE LIMIT 1'
+            );
+            const activeYear = activeYearResult.length > 0 ? activeYearResult[0] : null;
+
+            if (!activeYear) {
+                throw new Error('No active school year found');
+            }
 
             // Update student enrollment status
             await connection.execute(
