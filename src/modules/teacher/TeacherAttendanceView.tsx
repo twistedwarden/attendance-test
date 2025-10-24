@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Clock, CheckCircle, XCircle, User, Search, Calendar } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, User, Search, Calendar, Download } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { TeacherService, TeacherSchedule } from './api/teacherService';
 
@@ -15,6 +15,7 @@ export default function TeacherAttendanceView() {
   const [attendanceRows, setAttendanceRows] = useState<Array<{ studentId: number; studentName: string; sectionName: string | null; subjectAttendanceId: number | null; status: AttendanceStatus }>>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exportFormat, setExportFormat] = useState<'csv'|'xlsx'>('csv');
 
   useEffect(() => {
     let ignore = false;
@@ -114,6 +115,25 @@ export default function TeacherAttendanceView() {
     }
   };
 
+  const handleExportReport = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Export attendance report for the current date and schedule
+      await TeacherService.exportReport('attendance', {
+        period: 'day',
+        scheduleId: selectedScheduleId || undefined,
+        format: exportFormat
+      });
+    } catch (err) {
+      console.error('Export failed:', err);
+      setError(err instanceof Error ? err.message : 'Failed to export report');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -124,11 +144,42 @@ export default function TeacherAttendanceView() {
             {selectedSchedule ? `${selectedSchedule.subjectName}${selectedSchedule.sectionName ? ' • ' + selectedSchedule.sectionName : ''}` : '—'} • {selectedDate}
           </p>
         </div>
-        <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
-          <Calendar className="h-4 w-4" />
-          <span>Export Report</span>
-        </button>
+        <div className="flex items-center space-x-3">
+          <select
+            value={exportFormat}
+            onChange={(e) => setExportFormat(e.target.value as 'csv'|'xlsx')}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="csv">CSV</option>
+            <option value="xlsx">Excel</option>
+          </select>
+          <button 
+            onClick={handleExportReport}
+            disabled={loading || !selectedScheduleId}
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            <span>{loading ? 'Exporting...' : 'Export Report'}</span>
+          </button>
+        </div>
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <XCircle className="h-5 w-5 text-red-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Error</h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>{error}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

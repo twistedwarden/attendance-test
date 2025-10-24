@@ -211,7 +211,7 @@ export const TeacherService = {
     return data.data;
   },
 
-  async exportReport(label: 'attendance'|'student-list', params: { period: 'day'|'today'|'week'|'month'|'quarter'|'year'; scheduleId?: number; gradeLevel?: string }): Promise<void> {
+  async exportReport(label: 'attendance'|'student-list', params: { period: 'day'|'today'|'week'|'month'|'quarter'|'year'; scheduleId?: number; gradeLevel?: string; format?: 'csv'|'xlsx' }): Promise<void> {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
     const search = new URLSearchParams();
@@ -219,6 +219,7 @@ export const TeacherService = {
     search.set('period', params.period);
     if (params.scheduleId) search.set('scheduleId', String(params.scheduleId));
     if (params.gradeLevel) search.set('gradeLevel', params.gradeLevel);
+    if (params.format) search.set('format', params.format);
     const res = await fetch(`${API_BASE_URL}/teacher/reports/export?${search.toString()}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -230,7 +231,8 @@ export const TeacherService = {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `teacher-${label}-${new Date().toISOString().split('T')[0]}.csv`;
+    const fileExtension = params.format === 'xlsx' ? 'xlsx' : 'csv';
+    a.download = `teacher-${label}-${new Date().toISOString().split('T')[0]}.${fileExtension}`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {

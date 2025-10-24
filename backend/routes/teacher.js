@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticateToken, requireTeacher } from '../middleware/auth.js';
 import { pool } from '../config/database.js';
 import { getActiveSchoolYear } from '../middleware/validation.js';
+import * as XLSX from 'xlsx';
 
 const router = express.Router();
 
@@ -360,11 +361,11 @@ router.get('/reports', async (req, res) => {
   }
 });
 
-// Export teacher report as CSV
+// Export teacher report as CSV or Excel
 router.get('/reports/export', async (req, res) => {
   try {
     const teacherUserId = req.user.userId;
-    const { label = 'attendance', period = 'week', scheduleId, gradeLevel } = req.query; // label decides dataset
+    const { label = 'attendance', period = 'week', scheduleId, gradeLevel, format = 'csv' } = req.query; // label decides dataset, format: csv or xlsx
 
     const escapeCsv = (value) => {
       if (value === null || value === undefined) return '';
@@ -462,10 +463,26 @@ router.get('/reports/export', async (req, res) => {
     );
 
     const header = ['studentId','studentName','date','status'];
-    const csv = toCsv(attRows, header);
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="teacher-${label}-${Date.now()}.csv"`);
-    return res.status(200).send(csv);
+    
+    if (format === 'xlsx') {
+      // Create Excel workbook
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(attRows);
+      XLSX.utils.book_append_sheet(wb, ws, 'Attendance Report');
+      
+      // Generate Excel buffer
+      const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="teacher-${label}-${Date.now()}.xlsx"`);
+      return res.status(200).send(excelBuffer);
+    } else {
+      // Default to CSV
+      const csv = toCsv(attRows, header);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="teacher-${label}-${Date.now()}.csv"`);
+      return res.status(200).send(csv);
+    }
   } catch (error) {
     console.error('Teacher export reports error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error' });
