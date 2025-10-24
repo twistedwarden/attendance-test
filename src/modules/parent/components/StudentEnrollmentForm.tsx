@@ -169,9 +169,9 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
     setIsLoading(true);
 
     try {
-      // 1) If there are files selected, upload them first to get server-side filenames
+      // 1) If there are files selected, upload them first to get documentIds
       const token = localStorage.getItem('auth_token');
-      let uploadedFilenames: string[] = [];
+      let uploadedDocumentIds: number[] = [];
 
       if (enrollmentData.documents.length > 0) {
         const formData = new FormData();
@@ -194,12 +194,12 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
           return;
         }
 
-        uploadedFilenames = Array.isArray(uploadData.files)
-          ? uploadData.files.map((f: any) => f.filename).filter(Boolean)
+        uploadedDocumentIds = Array.isArray(uploadData.files)
+          ? uploadData.files.map((f: any) => f.documentId).filter(Boolean)
           : [];
       }
 
-      // 2) Submit enrollment with the saved filenames so registrar can serve them later
+      // 2) Submit enrollment with the documentIds
       const response = await fetch('/api/auth/enroll-student', {
         method: 'POST',
         headers: {
@@ -214,9 +214,8 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
           nationality: enrollmentData.nationality,
           address: enrollmentData.address,
           gradeLevel: enrollmentData.gradeLevel,
-          // Store just the filenames saved on the server; the registrar viewer
-          // uses these to construct /api/registrar/documents/:filename URLs.
-          documents: uploadedFilenames,
+          // Store documentIds for database storage
+          documentIds: uploadedDocumentIds,
           additionalInfo: enrollmentData.additionalInfo
         })
       });

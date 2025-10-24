@@ -199,68 +199,118 @@ export function FollowUpDocumentsSection({ students }: Props) {
                   </div>
                   <div className="text-xs text-gray-600">{item.documents.length} file(s)</div>
                 </div>
-                {item.documents.length > 0 && (
-                  <ul className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {item.documents.map((doc: any, idx: number) => {
-                      const isObject = typeof doc === 'object' && doc !== null;
-                      const displayName = isObject ? (doc.name || 'Document') : String(doc);
-                      let url: string | undefined = isObject ? doc.url : undefined;
-                      const token = localStorage.getItem('auth_token') || '';
-                      const lower = displayName.toLowerCase();
-                      const canPreviewInline = lower.endsWith('.pdf') || lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.gif') || lower.endsWith('.txt') || lower.endsWith('.html');
-                      if (!url) {
-                        const raw = displayName.trim();
-                        if (raw.startsWith('http://') || raw.startsWith('https://')) {
-                          url = raw;
-                        } else if (raw.startsWith('/')) {
-                          // Ensure we hit backend API, not SPA router
-                          if (API_BASE_URL) {
-                            url = `${API_BASE_URL}${raw}`;
-                          } else {
-                            url = raw.startsWith('/api/') ? raw : `/api${raw}`;
-                          }
-                        } else {
-                          url = `${BASE_API}/registrar/documents/${encodeURIComponent(raw)}`;
-                        }
-                      }
-                      // Append token for backend validation when opening in a new tab
-                      let urlWithToken = url;
-                      if (urlWithToken) {
-                        urlWithToken += urlWithToken.includes('?') ? `&token=${encodeURIComponent(token)}` : `?token=${encodeURIComponent(token)}`;
-                      }
-                      return (
-                        <li key={idx} className="text-sm">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="break-all text-gray-800">{displayName}</span>
-                            <div className="shrink-0 flex items-center gap-2">
-                              {canPreviewInline ? (
-                                <a
-                                  className="text-purple-700 hover:underline text-xs"
-                                  href={urlWithToken}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                >
-                                  Preview
-                                </a>
-                              ) : (
-                                <span className="text-gray-400 text-xs cursor-not-allowed" title="Preview not supported for this file type">Preview</span>
-                              )}
-                              <a
-                                className="text-gray-600 hover:underline text-xs"
-                                href={urlWithToken}
-                                target="_blank"
-                                rel="noreferrer noopener"
-                                download
-                              >
-                                Download
-                              </a>
+                {(() => {
+                  // Check if this is a new documentId-based record or old filename-based record
+                  if (item.fileName && item.documentId) {
+                    // New documentId-based system
+                    const token = localStorage.getItem('auth_token') || '';
+                    const lower = item.fileName.toLowerCase();
+                    const canPreviewInline = lower.endsWith('.pdf') || lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.gif') || lower.endsWith('.txt') || lower.endsWith('.html');
+                    
+                    const previewUrl = `/api/registrar/documents/${item.documentId}/preview?token=${encodeURIComponent(token)}`;
+                    const downloadUrl = `/api/registrar/documents/${item.documentId}/download?token=${encodeURIComponent(token)}`;
+                    
+                    return (
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between gap-3 p-2 bg-gray-50 rounded">
+                          <div className="flex-1">
+                            <span className="text-sm font-medium text-gray-800">{item.fileName}</span>
+                            <div className="text-xs text-gray-500">
+                              {item.fileSize ? `${Math.round(item.fileSize / 1024)} KB` : ''}
+                              {item.mimeType ? ` • ${item.mimeType}` : ''}
                             </div>
                           </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
+                          <div className="flex items-center gap-2">
+                            {canPreviewInline ? (
+                              <a
+                                className="text-purple-700 hover:underline text-xs"
+                                href={previewUrl}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                              >
+                                Preview
+                              </a>
+                            ) : (
+                              <span className="text-gray-400 text-xs cursor-not-allowed" title="Preview not supported for this file type">Preview</span>
+                            )}
+                            <a
+                              className="text-gray-600 hover:underline text-xs"
+                              href={downloadUrl}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              download
+                            >
+                              Download
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  } else if (item.documents && item.documents.length > 0) {
+                    // Old filename-based system (fallback)
+                    return (
+                      <ul className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {item.documents.map((doc: any, idx: number) => {
+                          const isObject = typeof doc === 'object' && doc !== null;
+                          const displayName = isObject ? (doc.name || 'Document') : String(doc);
+                          let url: string | undefined = isObject ? doc.url : undefined;
+                          const token = localStorage.getItem('auth_token') || '';
+                          const lower = displayName.toLowerCase();
+                          const canPreviewInline = lower.endsWith('.pdf') || lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.gif') || lower.endsWith('.txt') || lower.endsWith('.html');
+                          if (!url) {
+                            const raw = displayName.trim();
+                            if (raw.startsWith('http://') || raw.startsWith('https://')) {
+                              url = raw;
+                            } else if (raw.startsWith('/')) {
+                              if (API_BASE_URL) {
+                                url = `${API_BASE_URL}${raw}`;
+                              } else {
+                                url = raw.startsWith('/api/') ? raw : `/api${raw}`;
+                              }
+                            } else {
+                              url = `${BASE_API}/registrar/documents/${encodeURIComponent(raw)}`;
+                            }
+                          }
+                          let urlWithToken = url;
+                          if (urlWithToken) {
+                            urlWithToken += urlWithToken.includes('?') ? `&token=${encodeURIComponent(token)}` : `?token=${encodeURIComponent(token)}`;
+                          }
+                          return (
+                            <li key={idx} className="text-sm">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="break-all text-gray-800">{displayName}</span>
+                                <div className="shrink-0 flex items-center gap-2">
+                                  {canPreviewInline ? (
+                                    <a
+                                      className="text-purple-700 hover:underline text-xs"
+                                      href={urlWithToken}
+                                      target="_blank"
+                                      rel="noreferrer noopener"
+                                    >
+                                      Preview
+                                    </a>
+                                  ) : (
+                                    <span className="text-gray-400 text-xs cursor-not-allowed" title="Preview not supported for this file type">Preview</span>
+                                  )}
+                                  <a
+                                    className="text-gray-600 hover:underline text-xs"
+                                    href={urlWithToken}
+                                    target="_blank"
+                                    rel="noreferrer noopener"
+                                    download
+                                  >
+                                    Download
+                                  </a>
+                                </div>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             ))
           )}

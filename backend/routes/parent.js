@@ -625,7 +625,11 @@ router.get('/enrollment-documents', authenticateToken, requireRole(['parent']), 
              ed.SubmittedByUserID as submittedByUserId,
              ed.Documents as documents,
              ed.AdditionalInfo as additionalInfo,
-             ed.CreatedAt as createdAt
+             ed.CreatedAt as createdAt,
+             ed.FileName as fileName,
+             ed.FileSize as fileSize,
+             ed.MimeType as mimeType,
+             ed.IsCompressed as isCompressed
       FROM enrollment_documents ed
       JOIN studentrecord sr ON sr.StudentID = ed.StudentID
       WHERE sr.ParentID = ?`;
@@ -646,7 +650,12 @@ router.get('/enrollment-documents', authenticateToken, requireRole(['parent']), 
       submittedByUserId: r.submittedByUserId,
       documents: r.documents ? JSON.parse(r.documents) : [],
       additionalInfo: r.additionalInfo || null,
-      createdAt: r.createdAt
+      createdAt: r.createdAt,
+      // Include file information for new documentId-based system
+      fileName: r.fileName,
+      fileSize: r.fileSize,
+      mimeType: r.mimeType,
+      isCompressed: r.isCompressed
     }));
 
     return res.json({ success: true, data });

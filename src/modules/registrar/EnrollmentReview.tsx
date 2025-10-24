@@ -270,13 +270,16 @@ export default function EnrollmentReview() {
   };
 
   // Function to handle authenticated document access
-  const handleDocumentAccess = async (url: string, filename: string, isDownload = false) => {
+  const handleDocumentAccess = async (documentId: number, filename: string, isDownload = false) => {
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) {
         alert('Please log in to access documents');
         return;
       }
+
+      const endpoint = isDownload ? 'download' : 'preview';
+      const url = `/api/registrar/documents/${documentId}/${endpoint}`;
 
       if (isDownload) {
         // For download, fetch the file and create a blob URL
@@ -310,8 +313,7 @@ export default function EnrollmentReview() {
         setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
       } else {
         // For viewing: only attempt inline preview for the exact file if supported
-        const baseUrlNoQuery = url.split('?')[0];
-        const urlWithToken = `${baseUrlNoQuery}?token=${encodeURIComponent(token)}`;
+        const urlWithToken = `${url}?token=${encodeURIComponent(token)}`;
         if (canPreviewInline(filename)) {
           createDocumentViewer(urlWithToken, filename, true);
         } else {
@@ -850,49 +852,40 @@ export default function EnrollmentReview() {
                   )}
                 </div>
                 
-                {selectedEnrollment.documents && selectedEnrollment.documents.length > 0 && (
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Documents</label>
-                    <div className="mt-1 space-y-1">
-                      {selectedEnrollment.documents.map((doc, index) => {
-                        const isObject = typeof doc === 'object' && doc !== null;
-                        const name = isObject ? (doc as { name?: string }).name || 'Document' : String(doc);
-                        let url = isObject ? (doc as { url?: string }).url : undefined;
-                        const size = isObject ? (doc as { size?: number }).size : undefined;
-                        if (!url && !isObject && typeof doc === 'string') {
-                          const raw = doc.trim();
-                          if (raw.startsWith('http://') || raw.startsWith('https://')) {
-                            url = raw;
-                          } else if (raw.startsWith('/')) {
-                            url = `${API_BASE_URL}${raw}`;
-                          } else {
-                            // Serve files through backend API
-                            url = `${API_BASE_URL}/registrar/documents/${encodeURIComponent(raw)}`;
-                          }
-                        }
-                        if (!url && isObject && name) {
-                          const raw = name.trim();
-                          if (raw.startsWith('http://') || raw.startsWith('https://')) {
-                            url = raw;
-                          } else if (raw.startsWith('/')) {
-                            url = `${API_BASE_URL}${raw}`;
-                          } else {
-                            url = `${API_BASE_URL}/registrar/documents/${encodeURIComponent(raw)}`;
-                          }
-                        }
-                        return (
-                          <div key={index} className="flex items-center justify-between text-sm text-gray-600 py-2 border-b border-gray-100 last:border-b-0">
-                            <div className="flex items-center flex-1">
-                              <FileText className="w-4 h-4 mr-2 text-gray-400" />
-                              <span className="text-gray-900 font-medium">{name}</span>
-                              {typeof size === 'number' && (
-                                <span className="ml-2 text-xs text-gray-400">({Math.round(size / 1024)} KB)</span>
-                              )}
-                            </div>
-                            {url && (
+                {(() => {
+                  // Parse documentList from backend (format: "docId:filename:size:mimeType|docId2:filename2:size2:mimeType2")
+                  const documentList = selectedEnrollment.documentList as string;
+                  let items: Array<{documentId: number, filename: string, size: number, mimeType: string}> = [];
+                  
+                  if (documentList) {
+                    items = documentList.split('|').map(docStr => {
+                      const [documentId, filename, size, mimeType] = docStr.split(':');
+                      return {
+                        documentId: parseInt(documentId),
+                        filename,
+                        size: parseInt(size),
+                        mimeType
+                      };
+                    }).filter(doc => doc.documentId && doc.filename);
+                  }
+                  
+                  return items.length > 0 ? (
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Documents</label>
+                      <div className="mt-1 space-y-1">
+                        {items.map((doc, index) => {
+                          const name = doc.filename;
+                          const sizeKb = Math.round(doc.size / 1024);
+                          return (
+                            <div key={index} className="flex items-center justify-between text-sm text-gray-600 py-2 border-b border-gray-100 last:border-b-0">
+                              <div className="flex items-center flex-1">
+                                <FileText className="w-4 h-4 mr-2 text-gray-400" />
+                                <span className="text-gray-900 font-medium">{name}</span>
+                                <span className="ml-2 text-xs text-gray-400">({sizeKb} KB)</span>
+                              </div>
                               <div className="flex items-center space-x-2">
                                 <button
-                                  onClick={() => handleDocumentAccess(url, name, false)}
+                                  onClick={() => handleDocumentAccess(doc.documentId, name, false)}
                                   className="inline-flex items-center px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
                                   title="View Document"
                                 >
@@ -900,7 +893,7 @@ export default function EnrollmentReview() {
                                   View
                                 </button>
                                 <button
-                                  onClick={() => handleDocumentAccess(url, name, true)}
+                                  onClick={() => handleDocumentAccess(doc.documentId, name, true)}
                                   className="inline-flex items-center px-3 py-1 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors"
                                   title="Download Document"
                                 >
@@ -908,13 +901,13 @@ export default function EnrollmentReview() {
                                   Download
                                 </button>
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  ) : null;
+                })()}
                 
                 {selectedEnrollment.additionalInfo && (
                   <div>

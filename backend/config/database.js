@@ -1121,11 +1121,26 @@ export const clearOtp = async (email, type) => {
 // Enrollment documents management
 export const storeEnrollmentDocuments = async (studentId, enrollmentData) => {
   try {
-    const [result] = await pool.execute(
-      'INSERT INTO enrollment_documents (StudentID, SubmittedByUserID, Documents, AdditionalInfo, CreatedAt) VALUES (?, ?, ?, ?, ?)',
-      [studentId, enrollmentData.submittedByUserId, JSON.stringify(enrollmentData.documents), enrollmentData.additionalInfo, new Date()]
-    );
-    return result.insertId;
+    // If documentIds are provided, link them to the student
+    if (enrollmentData.documentIds && enrollmentData.documentIds.length > 0) {
+      // Update the existing document records to link them to this student
+      const placeholders = enrollmentData.documentIds.map(() => '?').join(',');
+      await pool.execute(
+        `UPDATE enrollment_documents SET StudentID = ? WHERE DocumentID IN (${placeholders})`,
+        [studentId, ...enrollmentData.documentIds]
+      );
+    }
+    
+    // Create a record for additional info (if any)
+    if (enrollmentData.additionalInfo) {
+      const [result] = await pool.execute(
+        'INSERT INTO enrollment_documents (StudentID, SubmittedByUserID, AdditionalInfo, CreatedAt) VALUES (?, ?, ?, ?)',
+        [studentId, enrollmentData.submittedByUserId, enrollmentData.additionalInfo, new Date()]
+      );
+      return result.insertId;
+    }
+    
+    return null;
   } catch (error) {
     console.error('Error storing enrollment documents:', error);
     throw error;

@@ -3,29 +3,22 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import jwt from 'jsonwebtoken';
+import zlib from 'zlib';
+import { promisify } from 'util';
 import { pool } from '../config/database.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 import { getActiveSchoolYear } from '../middleware/validation.js';
+
+// Promisify zlib functions for async/await
+const gzip = promisify(zlib.gzip);
+const gunzip = promisify(zlib.gunzip);
 
 const router = express.Router();
 
 // ===== FILE UPLOAD CONFIGURATION =====
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(process.cwd(), 'uploads', 'enrollment-documents');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    // Generate unique filename with timestamp
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Configure multer for memory storage (no filesystem dependency)
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage: storage,
@@ -206,15 +199,25 @@ router.get('/enrollments', authenticateToken, requireRole(['registrar', 'admin']
         ua.Username as reviewedByUsername,
         ed.Documents as documents,
         ed.AdditionalInfo as additionalInfo,
-        ed.SubmittedByUserID as submittedBy
+        ed.SubmittedByUserID as submittedBy,
+        GROUP_CONCAT(
+            CONCAT(
+                ed_docs.DocumentID, ':', 
+                ed_docs.FileName, ':', 
+                ed_docs.FileSize, ':', 
+                ed_docs.MimeType
+            ) SEPARATOR '|'
+        ) as documentList
       FROM studentrecord sr
       LEFT JOIN parent p ON sr.ParentID = p.ParentID
       LEFT JOIN useraccount up ON p.UserID = up.UserID
       LEFT JOIN enrollment_review er ON sr.StudentID = er.StudentID
       LEFT JOIN useraccount ua ON er.ReviewedByUserID = ua.UserID
       LEFT JOIN enrollment_documents ed ON sr.StudentID = ed.StudentID
+      LEFT JOIN enrollment_documents ed_docs ON sr.StudentID = ed_docs.StudentID AND ed_docs.FileData IS NOT NULL
       LEFT JOIN section sec ON sr.SectionID = sec.SectionID
       ${whereClause}
+      GROUP BY sr.StudentID
       ORDER BY sr.StudentID DESC
     `;
     // Inline sanitized numbers for LIMIT/OFFSET
@@ -1305,17 +1308,59 @@ router.post('/upload-documents', authenticateToken, requireRole(['parent', 'regi
       });
     }
 
-    const uploadedFiles = req.files.map(file => ({
-      originalName: file.originalname,
-      filename: file.filename,
-      path: file.path,
-      size: file.size,
-      mimetype: file.mimetype
-    }));
+    const uploadedFiles = [];
+    
+    for (const file of req.files) {
+      try {
+        // Compress the file buffer
+        const compressedData = await gzip(file.buffer);
+        const compressionRatio = ((file.size - compressedData.length) / file.size * 100).toFixed(1);
+        
+        // Only store compressed if it saves at least 10% space
+        const shouldCompress = compressionRatio > 10;
+        const finalData = shouldCompress ? compressedData : file.buffer;
+        
+        // Store file in database
+        const [result] = await pool.execute(
+          'INSERT INTO enrollment_documents (StudentID, SubmittedByUserID, FileData, FileName, FileSize, MimeType, IsCompressed, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            req.body.studentId || null, // Optional studentId for direct enrollment
+            req.user.userId,
+            finalData,
+            file.originalname,
+            file.size,
+            file.mimetype,
+            shouldCompress,
+            new Date()
+          ]
+        );
+        
+        uploadedFiles.push({
+          documentId: result.insertId,
+          originalName: file.originalname,
+          filename: file.originalname,
+          size: file.size,
+          compressedSize: shouldCompress ? compressedData.length : file.size,
+          compressionRatio: shouldCompress ? `${compressionRatio}%` : '0%',
+          mimetype: file.mimetype
+        });
+        
+      } catch (fileError) {
+        console.error(`Error processing file ${file.originalname}:`, fileError);
+        // Continue with other files even if one fails
+      }
+    }
+
+    if (uploadedFiles.length === 0) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to process any files'
+      });
+    }
 
     res.json({
       success: true,
-      message: 'Files uploaded successfully',
+      message: 'Files uploaded and compressed successfully',
       files: uploadedFiles
     });
 
@@ -1330,8 +1375,8 @@ router.post('/upload-documents', authenticateToken, requireRole(['parent', 'regi
 
 // ===== DOCUMENT SERVING =====
 
-// Serve enrollment documents
-router.get('/documents/:filename', async (req, res) => {
+// Preview enrollment documents (inline viewing)
+router.get('/documents/:documentId/preview', async (req, res) => {
   try {
     // Check authentication - either from header or query parameter
     const authHeader = req.headers.authorization;
@@ -1345,10 +1390,6 @@ router.get('/documents/:filename', async (req, res) => {
     if (tokenFromQuery) {
       try {
         const decoded = jwt.verify(tokenFromQuery, process.env.JWT_SECRET);
-        console.log('Decoded token:', { userId: decoded.userId, role: decoded.role });
-        
-        // Check if user has required role - for now, allow any authenticated user for testing
-        // TODO: Restrict to ['registrar', 'admin'] in production
         if (!decoded.userId) {
           return res.status(403).json({ success: false, message: 'Invalid user ID in token' });
         }
@@ -1358,109 +1399,111 @@ router.get('/documents/:filename', async (req, res) => {
       }
     }
     
-    const { filename } = req.params;
+    const { documentId } = req.params;
     
-    // Decode the filename
-    const decodedFilename = decodeURIComponent(filename);
+    // Get document from database
+    const [rows] = await pool.execute(
+      'SELECT FileData, FileName, FileSize, MimeType, IsCompressed FROM enrollment_documents WHERE DocumentID = ?',
+      [documentId]
+    );
     
-    // For now, we'll serve files from a documents directory
-    // In a real implementation, you'd want to:
-    // 1. Store files in a secure directory outside the web root
-    // 2. Validate the filename to prevent directory traversal
-    // 3. Check if the user has permission to access this specific document
-    
-    // path and fs are already imported at the top
-    
-    // Create documents directory if it doesn't exist
-    const documentsDir = path.join(process.cwd(), 'uploads', 'enrollment-documents');
-    if (!fs.existsSync(documentsDir)) {
-      fs.mkdirSync(documentsDir, { recursive: true });
-    }
-    
-    const filePath = path.join(documentsDir, decodedFilename);
-    
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
+    if (rows.length === 0) {
       return res.status(404).json({ 
         success: false, 
         message: 'Document not found' 
       });
     }
     
-    // Get file stats
-    const stats = fs.statSync(filePath);
+    const document = rows[0];
+    let fileData = document.FileData;
     
-    // Determine content type based on file extension
-    const ext = path.extname(decodedFilename).toLowerCase();
-    let contentType = 'application/octet-stream';
-    
-    switch (ext) {
-      case '.pdf':
-        contentType = 'application/pdf';
-        break;
-      case '.doc':
-        contentType = 'application/msword';
-        break;
-      case '.docx':
-        contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-        break;
-      case '.jpg':
-      case '.jpeg':
-        contentType = 'image/jpeg';
-        break;
-      case '.png':
-        contentType = 'image/png';
-        break;
-      case '.txt':
-        contentType = 'text/plain';
-        break;
-      case '.html':
-        contentType = 'text/html';
-        break;
-      case '.rtf':
-        contentType = 'application/rtf';
-        break;
-      default:
-        contentType = 'application/octet-stream';
-    }
-    
-    // Check if this is a view request (has token query parameter) or download request
-    const isViewRequest = !!tokenFromQuery;
-    
-    // Set appropriate headers
-    res.setHeader('Content-Type', contentType);
-    
-    if (isViewRequest) {
-      // For viewing, try to force inline display
-      res.setHeader('Content-Disposition', `inline; filename="${decodedFilename}"`);
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-    } else {
-      // For download, use attachment
-      res.setHeader('Content-Disposition', `attachment; filename="${decodedFilename}"`);
-    }
-    
-    res.setHeader('Content-Length', stats.size);
-    res.setHeader('Cache-Control', 'no-cache');
-    
-    // Stream the file
-    const fileStream = fs.createReadStream(filePath);
-    fileStream.on('error', (error) => {
-      console.error('File stream error:', error);
-      if (!res.headersSent) {
-        res.status(500).json({ 
-          success: false, 
-          message: 'Error reading file' 
-        });
+    // Decompress if needed
+    if (document.IsCompressed) {
+      try {
+        fileData = await gunzip(document.FileData);
+      } catch (decompressionError) {
+        console.error('Decompression error:', decompressionError);
+        return res.status(500).json({ success: false, message: 'Error decompressing document' });
       }
-    });
-    fileStream.pipe(res);
+    }
+    
+    // Set appropriate headers for inline viewing (preview)
+    res.setHeader('Content-Type', document.MimeType || 'application/octet-stream');
+    res.setHeader('Content-Length', fileData.length);
+    res.setHeader('Content-Disposition', `inline; filename="${document.FileName}"`);
+    
+    // Send the file data
+    res.send(fileData);
     
   } catch (error) {
-    console.error('Document serving error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error serving document' 
-    });
+    console.error('Document preview error:', error);
+    res.status(500).json({ success: false, message: 'Error previewing document' });
+  }
+});
+
+// Download enrollment documents (attachment download)
+router.get('/documents/:documentId/download', async (req, res) => {
+  try {
+    // Check authentication - either from header or query parameter
+    const authHeader = req.headers.authorization;
+    const tokenFromQuery = req.query.token;
+    
+    if (!authHeader && !tokenFromQuery) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+    
+    // If token is in query parameter, validate it
+    if (tokenFromQuery) {
+      try {
+        const decoded = jwt.verify(tokenFromQuery, process.env.JWT_SECRET);
+        if (!decoded.userId) {
+          return res.status(403).json({ success: false, message: 'Invalid user ID in token' });
+        }
+      } catch (error) {
+        console.error('Token validation error:', error);
+        return res.status(401).json({ success: false, message: 'Invalid token' });
+      }
+    }
+    
+    const { documentId } = req.params;
+    
+    // Get document from database
+    const [rows] = await pool.execute(
+      'SELECT FileData, FileName, FileSize, MimeType, IsCompressed FROM enrollment_documents WHERE DocumentID = ?',
+      [documentId]
+    );
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Document not found' 
+      });
+    }
+    
+    const document = rows[0];
+    let fileData = document.FileData;
+    
+    // Decompress if needed
+    if (document.IsCompressed) {
+      try {
+        fileData = await gunzip(document.FileData);
+      } catch (decompressionError) {
+        console.error('Decompression error:', decompressionError);
+        return res.status(500).json({ success: false, message: 'Error decompressing document' });
+      }
+    }
+    
+    // Set appropriate headers for download
+    res.setHeader('Content-Type', document.MimeType || 'application/octet-stream');
+    res.setHeader('Content-Length', fileData.length);
+    res.setHeader('Content-Disposition', `attachment; filename="${document.FileName}"`);
+    
+    // Send the file data
+    res.send(fileData);
+    
+  } catch (error) {
+    console.error('Document download error:', error);
+    res.status(500).json({ success: false, message: 'Error downloading document' });
   }
 });
 

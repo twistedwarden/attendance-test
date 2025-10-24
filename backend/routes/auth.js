@@ -562,7 +562,7 @@ router.post('/enroll-student', authenticateToken, requireRole(['parent']), async
       nationality,
       address,
       gradeLevel, 
-      documents = [],
+      documentIds = [],
       additionalInfo = null 
     } = req.body;
 
@@ -591,7 +591,7 @@ router.post('/enroll-student', authenticateToken, requireRole(['parent']), async
     // Store enrollment documents and info
     await storeEnrollmentDocuments(student.StudentID, {
       submittedByUserId: req.user.userId,
-      documents,
+      documentIds,
       additionalInfo
     });
 

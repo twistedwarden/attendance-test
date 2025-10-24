@@ -70,20 +70,19 @@ export default function EnrollmentsSection() {
   
   const authToken = useMemo(() => localStorage.getItem('auth_token') || '', []);
 
-  const getPreviewUrl = (filename: string) => {
-    const encoded = encodeURIComponent(filename);
+  const getPreviewUrl = (documentId: number) => {
     const token = authToken;
-    return `/api/registrar/documents/${encoded}?token=${encodeURIComponent(token)}`;
+    return `/api/registrar/documents/${documentId}/preview?token=${encodeURIComponent(token)}`;
   };
 
-  const handlePreviewDocument = (filename: string) => {
-    const url = getPreviewUrl(filename);
+  const handlePreviewDocument = (documentId: number) => {
+    const url = getPreviewUrl(documentId);
     window.open(url, '_blank');
   };
 
-  const handleDownloadDocument = async (filename: string) => {
+  const handleDownloadDocument = async (documentId: number, filename: string) => {
     try {
-      const res = await fetch(`/api/registrar/documents/${encodeURIComponent(filename)}`, {
+      const res = await fetch(`/api/registrar/documents/${documentId}/download`, {
         headers: { 'Authorization': `Bearer ${authToken}` }
       });
       if (!res.ok) {
@@ -806,20 +805,29 @@ export default function EnrollmentsSection() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Documents */}
               {(() => {
-                let docs = selectedEnrollment.documents as any;
-                if (typeof docs === 'string') {
-                  try { docs = JSON.parse(docs); } catch { docs = null; }
+                // Parse documentList from backend (format: "docId:filename:size:mimeType|docId2:filename2:size2:mimeType2")
+                const documentList = selectedEnrollment.documentList as string;
+                let items: Array<{documentId: number, filename: string, size: number, mimeType: string}> = [];
+                
+                if (documentList) {
+                  items = documentList.split('|').map(docStr => {
+                    const [documentId, filename, size, mimeType] = docStr.split(':');
+                    return {
+                      documentId: parseInt(documentId),
+                      filename,
+                      size: parseInt(size),
+                      mimeType
+                    };
+                  }).filter(doc => doc.documentId && doc.filename);
                 }
-                const items = Array.isArray(docs) ? docs : [];
+                
                 return items.length > 0 ? (
                   <div>
                     <h3 className="text-lg font-medium text-gray-900 mb-4">Submitted Documents</h3>
                     <div className="space-y-2">
-                      {items.map((doc: any, index: number) => {
-                        const filename: string = typeof doc === 'string' ? doc : (doc.filename || doc.name || `document-${index + 1}`);
-                        const displayName: string = (typeof doc === 'object' && (doc.originalName || doc.name)) || filename || `Document ${index + 1}`;
-                        const sizeKb = typeof doc === 'object' && doc.size ? (doc.size / 1024).toFixed(1) : undefined;
-                        const type = typeof doc === 'object' ? doc.type || doc.mimetype : undefined;
+                      {items.map((doc, index) => {
+                        const displayName = doc.filename;
+                        const sizeKb = (doc.size / 1024).toFixed(1);
                         return (
                           <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg border">
                             <div className="flex-shrink-0">
@@ -827,19 +835,19 @@ export default function EnrollmentsSection() {
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
-                              {type && (<p className="text-xs text-gray-500">{type}</p>)}
-                              {sizeKb && (<p className="text-xs text-gray-500">{sizeKb} KB</p>)}
+                              <p className="text-xs text-gray-500">{doc.mimeType}</p>
+                              <p className="text-xs text-gray-500">{sizeKb} KB</p>
                             </div>
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => handlePreviewDocument(filename)}
+                                onClick={() => handlePreviewDocument(doc.documentId)}
                                 className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 rounded"
                                 title="Preview"
                               >
                                 <Eye className="h-4 w-4 mr-1" /> Preview
                               </button>
                               <button
-                                onClick={() => handleDownloadDocument(filename)}
+                                onClick={() => handleDownloadDocument(doc.documentId, doc.filename)}
                                 className="inline-flex items-center px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded"
                                 title="Download"
                               >

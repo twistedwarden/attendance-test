@@ -1977,15 +1977,25 @@ router.get('/enrollments', async (req, res) => {
                 ua.Username as reviewedByUsername,
                 ed.Documents as documents,
                 ed.AdditionalInfo as additionalInfo,
-                ed.SubmittedByUserID as submittedBy
+                ed.SubmittedByUserID as submittedBy,
+                GROUP_CONCAT(
+                    CONCAT(
+                        ed_docs.DocumentID, ':', 
+                        ed_docs.FileName, ':', 
+                        ed_docs.FileSize, ':', 
+                        ed_docs.MimeType
+                    ) SEPARATOR '|'
+                ) as documentList
             FROM studentrecord sr
             LEFT JOIN parent p ON sr.ParentID = p.ParentID
             LEFT JOIN useraccount up ON p.UserID = up.UserID
             LEFT JOIN enrollment_review er ON sr.StudentID = er.StudentID
             LEFT JOIN useraccount ua ON er.ReviewedByUserID = ua.UserID
             LEFT JOIN enrollment_documents ed ON sr.StudentID = ed.StudentID
+            LEFT JOIN enrollment_documents ed_docs ON sr.StudentID = ed_docs.StudentID AND ed_docs.FileData IS NOT NULL
             LEFT JOIN section sec ON sr.SectionID = sec.SectionID
             ${whereClause}
+            GROUP BY sr.StudentID
             ORDER BY sr.CreatedBy DESC
         `;
 
