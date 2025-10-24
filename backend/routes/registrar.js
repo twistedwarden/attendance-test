@@ -1320,11 +1320,11 @@ router.post('/upload-documents', authenticateToken, requireRole(['parent', 'regi
         const shouldCompress = compressionRatio > 10;
         const finalData = shouldCompress ? compressedData : file.buffer;
         
-        // Store file in database
+        // Store file in database (StudentID can be NULL initially)
         const [result] = await pool.execute(
           'INSERT INTO enrollment_documents (StudentID, SubmittedByUserID, FileData, FileName, FileSize, MimeType, IsCompressed, CreatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
           [
-            req.body.studentId || null, // Optional studentId for direct enrollment
+            req.body.studentId || null, // Can be NULL for initial uploads
             req.user.userId,
             finalData,
             file.originalname,

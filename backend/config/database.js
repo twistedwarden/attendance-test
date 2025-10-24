@@ -1126,8 +1126,8 @@ export const storeEnrollmentDocuments = async (studentId, enrollmentData) => {
       // Update the existing document records to link them to this student
       const placeholders = enrollmentData.documentIds.map(() => '?').join(',');
       await pool.execute(
-        `UPDATE enrollment_documents SET StudentID = ? WHERE DocumentID IN (${placeholders})`,
-        [studentId, ...enrollmentData.documentIds]
+        `UPDATE enrollment_documents SET StudentID = ? WHERE DocumentID IN (${placeholders}) AND SubmittedByUserID = ?`,
+        [studentId, ...enrollmentData.documentIds, enrollmentData.submittedByUserId]
       );
     }
     
