@@ -62,7 +62,7 @@ router.get('/profile', authenticateToken, requireRole(['parent']), async (req, r
     }
 
     const [rows] = await pool.execute(
-      `SELECT p.ParentID, p.FullName, p.ContactInfo, ua.Username as Email
+      `SELECT p.ParentID, p.FullName, p.ContactInfo, p.Relationship, ua.Username as Email
        FROM parent p
        LEFT JOIN useraccount ua ON ua.UserID = p.UserID
        WHERE p.ParentID = ?`,
@@ -80,11 +80,98 @@ router.get('/profile', authenticateToken, requireRole(['parent']), async (req, r
         ParentID: parent.ParentID,
         FullName: parent.FullName,
         ContactInfo: parent.ContactInfo,
+        Relationship: parent.Relationship,
         Email: parent.Email
       }
     });
   } catch (error) {
     console.error('Get parent profile error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Update parent profile
+router.put('/profile', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const parentId = req.user.parentId;
+    const userId = req.user.userId;
+    const { fullName, email, phoneNumber, relationship } = req.body;
+
+    if (!parentId) {
+      return res.status(404).json({ success: false, message: 'Parent profile not found' });
+    }
+
+    // Start transaction
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      // Update parent table
+      const updateFields = [];
+      const updateValues = [];
+      
+      if (fullName !== undefined) {
+        updateFields.push('FullName = ?');
+        updateValues.push(fullName);
+      }
+      
+      if (phoneNumber !== undefined) {
+        updateFields.push('ContactInfo = ?');
+        updateValues.push(phoneNumber);
+      }
+      
+      if (relationship !== undefined) {
+        updateFields.push('Relationship = ?');
+        updateValues.push(relationship);
+      }
+
+      if (updateFields.length > 0) {
+        updateValues.push(parentId);
+        await connection.execute(
+          `UPDATE parent SET ${updateFields.join(', ')} WHERE ParentID = ?`,
+          updateValues
+        );
+      }
+
+      // Update user account email if provided
+      if (email !== undefined) {
+        await connection.execute(
+          'UPDATE useraccount SET Username = ? WHERE UserID = ?',
+          [email, userId]
+        );
+      }
+
+      await connection.commit();
+
+      // Return updated profile
+      const [updatedRows] = await pool.execute(
+        `SELECT p.ParentID, p.FullName, p.ContactInfo, p.Relationship, ua.Username as Email
+         FROM parent p
+         LEFT JOIN useraccount ua ON ua.UserID = p.UserID
+         WHERE p.ParentID = ?`,
+        [parentId]
+      );
+
+      const updatedParent = updatedRows[0];
+      return res.json({
+        success: true,
+        data: {
+          ParentID: updatedParent.ParentID,
+          FullName: updatedParent.FullName,
+          ContactInfo: updatedParent.ContactInfo,
+          Relationship: updatedParent.Relationship,
+          Email: updatedParent.Email
+        },
+        message: 'Profile updated successfully'
+      });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('Update parent profile error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });

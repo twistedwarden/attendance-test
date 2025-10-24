@@ -3,7 +3,7 @@ import { User, Mail, Phone, MapPin, Edit, Save, X, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Parent, Student } from '../api/parentService';
+import { Parent, Student, ParentService } from '../api/parentService';
 import ChangePasswordCard from '../components/ChangePasswordCard';
 
 interface CompactProfileProps {
@@ -14,21 +14,67 @@ interface CompactProfileProps {
 const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<Parent | null>(parentData);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const handleEdit = () => {
     setIsEditing(true);
     setEditedData(parentData);
+    setSaveMessage(null);
   };
 
-  const handleSave = () => {
-    // Here you would typically save to backend
-    console.log('Saving profile data:', editedData);
-    setIsEditing(false);
+  const handleSave = async () => {
+    if (!editedData) return;
+    
+    setIsSaving(true);
+    setSaveMessage(null);
+    
+    try {
+      // Prepare the update data
+      const updateData: Partial<Parent> = {};
+      
+      if (editedData.fullName !== parentData?.fullName) {
+        updateData.fullName = editedData.fullName;
+      }
+      if (editedData.email !== parentData?.email) {
+        updateData.email = editedData.email;
+      }
+      if (editedData.phoneNumber !== parentData?.phoneNumber) {
+        updateData.phoneNumber = editedData.phoneNumber;
+      }
+      if (editedData.relationship !== parentData?.relationship) {
+        updateData.relationship = editedData.relationship;
+      }
+
+      // Only make API call if there are changes
+      if (Object.keys(updateData).length > 0) {
+        await ParentService.updateParentProfile(updateData);
+        setSaveMessage({ type: 'success', text: 'Profile updated successfully!' });
+        
+        // Update the parent data with the new values
+        if (parentData) {
+          Object.assign(parentData, updateData);
+        }
+      } else {
+        setSaveMessage({ type: 'success', text: 'No changes to save.' });
+      }
+      
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      setSaveMessage({ 
+        type: 'error', 
+        text: error instanceof Error ? error.message : 'Failed to save profile. Please try again.' 
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCancel = () => {
     setEditedData(parentData);
     setIsEditing(false);
+    setSaveMessage(null);
   };
 
   // Function to get appropriate section title based on relationship and count
@@ -84,17 +130,39 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
           </Button>
         ) : (
           <div className="flex space-x-2">
-            <Button onClick={handleSave} size="sm" className="flex items-center space-x-2">
+            <Button 
+              onClick={handleSave} 
+              size="sm" 
+              className="flex items-center space-x-2"
+              disabled={isSaving}
+            >
               <Save size={14} />
-              <span>Save</span>
+              <span>{isSaving ? 'Saving...' : 'Save'}</span>
             </Button>
-            <Button variant="outline" onClick={handleCancel} size="sm" className="flex items-center space-x-2">
+            <Button 
+              variant="outline" 
+              onClick={handleCancel} 
+              size="sm" 
+              className="flex items-center space-x-2"
+              disabled={isSaving}
+            >
               <X size={14} />
               <span>Cancel</span>
             </Button>
           </div>
         )}
       </div>
+
+      {/* Save Message */}
+      {saveMessage && (
+        <div className={`p-3 rounded-lg ${
+          saveMessage.type === 'success' 
+            ? 'bg-green-50 border border-green-200 text-green-800' 
+            : 'bg-red-50 border border-red-200 text-red-800'
+        }`}>
+          <p className="text-sm font-medium">{saveMessage.text}</p>
+        </div>
+      )}
 
       {/* Compact Parent Information Card */}
       <Card>
@@ -163,22 +231,6 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-start space-x-2">
-                <MapPin size={14} className="text-gray-500 mt-1" />
-                <div className="flex-1 min-w-0">
-                  <label className="text-xs font-medium text-gray-700 block">Address</label>
-                  {isEditing ? (
-                    <Input
-                      value={editedData.address}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('address', e.target.value)}
-                      className="mt-1 text-sm"
-                    />
-                  ) : (
-                    <p className="text-sm text-gray-800">{parentData.address}</p>
-                  )}
-                </div>
-              </div>
-
               <div className="flex items-start space-x-2">
                 <User size={14} className="text-gray-500 mt-1" />
                 <div className="flex-1 min-w-0">
