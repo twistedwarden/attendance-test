@@ -155,8 +155,23 @@ const insertSections = async (pool) => {
 			sectionIds[`${s.GradeLevel}-${s.SectionName}`] = existing[0].SectionID;
 			continue;
 		}
-		const [res] = await pool.query('INSERT INTO section (SectionName, GradeLevel, Description, Capacity, IsActive) VALUES (?, ?, ?, ?, ?)', 
-			[s.SectionName, s.GradeLevel, s.Description, s.Capacity, true]);
+		// Check if SchoolYearID column exists and get active school year
+		const hasSchoolYearId = await hasColumn(pool, 'section', 'SchoolYearID');
+		let schoolYearId = null;
+		if (hasSchoolYearId) {
+			const [activeYear] = await pool.query('SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1');
+			schoolYearId = activeYear.length > 0 ? activeYear[0].SchoolYearID : null;
+		}
+		
+		const cols = ['SectionName', 'GradeLevel', 'Description', 'Capacity', 'IsActive'];
+		const vals = [s.SectionName, s.GradeLevel, s.Description, s.Capacity, true];
+		if (hasSchoolYearId && schoolYearId) {
+			cols.push('SchoolYearID');
+			vals.push(schoolYearId);
+		}
+		
+		const placeholders = cols.map(() => '?').join(', ');
+		const [res] = await pool.query(`INSERT INTO section (${cols.join(', ')}) VALUES (${placeholders})`, vals);
 		sectionIds[`${s.GradeLevel}-${s.SectionName}`] = res.insertId;
 	}
 	return sectionIds;
@@ -421,10 +436,23 @@ const insertAttendanceLogs = async (pool, studentIds, validatorUserId) => {
 		const id = studentIds[l.student];
 		const [exists] = await pool.query('SELECT 1 FROM attendancelog WHERE StudentID = ? AND Date = ? LIMIT 1', [id, l.Date]);
 		if (exists.length === 0) {
-			await pool.query(
-				'INSERT INTO attendancelog (StudentID, Date, TimeIn, TimeOut, ValidatedBy) VALUES (?, ?, ?, ?, ?)',
-				[id, l.Date, l.TimeIn, l.TimeOut, validatorUserId]
-			);
+			// Check if SchoolYearID column exists and get active school year
+			const hasSchoolYearId = await hasColumn(pool, 'attendancelog', 'SchoolYearID');
+			let schoolYearId = null;
+			if (hasSchoolYearId) {
+				const [activeYear] = await pool.query('SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1');
+				schoolYearId = activeYear.length > 0 ? activeYear[0].SchoolYearID : null;
+			}
+			
+			const cols = ['StudentID', 'Date', 'TimeIn', 'TimeOut', 'ValidatedBy'];
+			const vals = [id, l.Date, l.TimeIn, l.TimeOut, validatorUserId];
+			if (hasSchoolYearId && schoolYearId) {
+				cols.push('SchoolYearID');
+				vals.push(schoolYearId);
+			}
+			
+			const placeholders = cols.map(() => '?').join(', ');
+			await pool.query(`INSERT INTO attendancelog (${cols.join(', ')}) VALUES (${placeholders})`, vals);
 		}
 	}
 };
@@ -457,10 +485,23 @@ const insertSubjectAttendance = async (pool, studentIds, subjectIds, validatorUs
 				const statuses = ['Present', 'Late', 'Excused'];
 				const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
 				
-				await pool.query(
-					'INSERT INTO subjectattendance (StudentID, SubjectID, Date, Status, ValidatedBy) VALUES (?, ?, ?, ?, ?)',
-					[studentId, subjectId, todayStr, randomStatus, validatorUserId]
-				);
+				// Check if SchoolYearID column exists and get active school year
+				const hasSchoolYearId = await hasColumn(pool, 'subjectattendance', 'SchoolYearID');
+				let schoolYearId = null;
+				if (hasSchoolYearId) {
+					const [activeYear] = await pool.query('SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1');
+					schoolYearId = activeYear.length > 0 ? activeYear[0].SchoolYearID : null;
+				}
+				
+				const cols = ['StudentID', 'SubjectID', 'Date', 'Status', 'ValidatedBy'];
+				const vals = [studentId, subjectId, todayStr, randomStatus, validatorUserId];
+				if (hasSchoolYearId && schoolYearId) {
+					cols.push('SchoolYearID');
+					vals.push(schoolYearId);
+				}
+				
+				const placeholders = cols.map(() => '?').join(', ');
+				await pool.query(`INSERT INTO subjectattendance (${cols.join(', ')}) VALUES (${placeholders})`, vals);
 			}
 		}
 	}

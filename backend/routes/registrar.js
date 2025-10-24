@@ -1329,9 +1329,15 @@ router.post('/upload-documents', authenticateToken, requireRole(['parent', 'regi
           // For parent uploads during enrollment, we'll use a temporary approach
           // Create a temporary student record that will be updated later
           try {
+            // Get active school year ID
+            const [activeYear] = await pool.execute(
+              'SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1'
+            );
+            const schoolYearId = activeYear.length > 0 ? activeYear[0].SchoolYearID : null;
+            
             const [tempStudent] = await pool.execute(
-              'INSERT INTO studentrecord (FullName, ParentID, CreatedBy, EnrollmentStatus) VALUES (?, ?, ?, ?)',
-              ['TEMP_STUDENT', req.user.parentId, req.user.userId, 'pending']
+              'INSERT INTO studentrecord (FullName, ParentID, CreatedBy, EnrollmentStatus, SchoolYearID) VALUES (?, ?, ?, ?, ?)',
+              ['TEMP_STUDENT', req.user.parentId, req.user.userId, 'pending', schoolYearId]
             );
             studentId = tempStudent.insertId;
           } catch (tempError) {

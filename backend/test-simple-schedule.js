@@ -21,17 +21,22 @@ async function testSimpleSchedule() {
         // Try to create a simple schedule directly
         if (teachers.length > 0 && subjects.length > 0) {
             console.log('\n4. Creating a test schedule:');
+            
+            // Get active school year ID
+            const [activeYear] = await pool.execute('SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1');
+            const schoolYearId = activeYear.length > 0 ? activeYear[0].SchoolYearID : null;
+            
             const [result] = await pool.execute(
-                'INSERT INTO teacherschedule (TeacherID, SubjectID, SectionID, TimeIn, TimeOut, DayOfWeek) VALUES (?, ?, ?, ?, ?, ?)',
-                [teachers[0].UserID, subjects[0].SubjectID, sections[0]?.SectionID || null, '08:00', '09:00', 'Thu']
+                'INSERT INTO teacherschedule (TeacherID, SubjectID, SectionID, TimeIn, TimeOut, DayOfWeek, SchoolYearID) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [teachers[0].UserID, subjects[0].SubjectID, sections[0]?.SectionID || null, '08:00', '09:00', 'Thu', schoolYearId]
             );
             console.log('✅ Schedule created with ID:', result.insertId);
 
             // Now try to create another schedule on a different day (should work)
             console.log('\n5. Creating another schedule on different day:');
             const [result2] = await pool.execute(
-                'INSERT INTO teacherschedule (TeacherID, SubjectID, SectionID, TimeIn, TimeOut, DayOfWeek) VALUES (?, ?, ?, ?, ?, ?)',
-                [teachers[0].UserID, subjects[0].SubjectID, sections[0]?.SectionID || null, '08:00', '09:00', 'Fri']
+                'INSERT INTO teacherschedule (TeacherID, SubjectID, SectionID, TimeIn, TimeOut, DayOfWeek, SchoolYearID) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [teachers[0].UserID, subjects[0].SubjectID, sections[0]?.SectionID || null, '08:00', '09:00', 'Fri', schoolYearId]
             );
             console.log('✅ Second schedule created with ID:', result2.insertId);
 
