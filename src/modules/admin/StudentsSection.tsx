@@ -776,7 +776,28 @@ export default function StudentsSection() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nationality</label>
-              <input value={formNationality} onChange={(e) => setFormNationality(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              <select
+                value={formNationality}
+                onChange={(e) => setFormNationality(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select Nationality</option>
+                {nationalityOptions.map((nationality) => (
+                  <option key={nationality} value={nationality}>{nationality}</option>
+                ))}
+              </select>
+              {formNationality === 'Other' && (
+                <div className="mt-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Please specify</label>
+                  <input
+                    type="text"
+                    value={customNationality}
+                    onChange={(e) => setCustomNationality(e.target.value)}
+                    placeholder="Enter nationality"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              )}
             </div>
           </div>
           <div>
