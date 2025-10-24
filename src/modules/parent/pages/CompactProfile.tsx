@@ -24,6 +24,7 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
   };
 
   const handleSave = async () => {
+    console.log('NEW handleSave function called!'); // Debug log
     if (!editedData) return;
     
     setIsSaving(true);
@@ -46,8 +47,11 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
         updateData.relationship = editedData.relationship;
       }
 
+      console.log('Update data prepared:', updateData); // Debug log
+
       // Only make API call if there are changes
       if (Object.keys(updateData).length > 0) {
+        console.log('Making API call to update profile...'); // Debug log
         await ParentService.updateParentProfile(updateData);
         setSaveMessage({ type: 'success', text: 'Profile updated successfully!' });
         
