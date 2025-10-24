@@ -121,8 +121,21 @@ router.put('/profile', authenticateToken, requireRole(['parent']), async (req, r
       }
       
       if (relationship !== undefined) {
+        // Map relationship values to valid ENUM values
+        let validRelationship = relationship;
+        if (relationship.toLowerCase() === 'parent' || relationship.toLowerCase() === 'guardian') {
+          validRelationship = 'Guardian';
+        } else if (relationship.toLowerCase() === 'father' || relationship.toLowerCase() === 'dad') {
+          validRelationship = 'Father';
+        } else if (relationship.toLowerCase() === 'mother' || relationship.toLowerCase() === 'mom') {
+          validRelationship = 'Mother';
+        } else {
+          // Default to Guardian if not a recognized value
+          validRelationship = 'Guardian';
+        }
+        
         updateFields.push('Relationship = ?');
-        updateValues.push(relationship);
+        updateValues.push(validRelationship);
       }
 
       if (updateFields.length > 0) {

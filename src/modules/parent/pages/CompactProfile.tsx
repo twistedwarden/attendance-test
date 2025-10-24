@@ -24,7 +24,6 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
   };
 
   const handleSave = async () => {
-    console.log('NEW handleSave function called!'); // Debug log
     if (!editedData) return;
     
     setIsSaving(true);
@@ -47,11 +46,8 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
         updateData.relationship = editedData.relationship;
       }
 
-      console.log('Update data prepared:', updateData); // Debug log
-
       // Only make API call if there are changes
       if (Object.keys(updateData).length > 0) {
-        console.log('Making API call to update profile...'); // Debug log
         await ParentService.updateParentProfile(updateData);
         setSaveMessage({ type: 'success', text: 'Profile updated successfully!' });
         
@@ -240,11 +236,15 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
                 <div className="flex-1 min-w-0">
                   <label className="text-xs font-medium text-gray-700 block">Relationship</label>
                   {isEditing ? (
-                    <Input
-                      value={editedData.relationship}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('relationship', e.target.value)}
-                      className="mt-1 text-sm"
-                    />
+                    <select
+                      value={editedData.relationship || 'Guardian'}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('relationship', e.target.value)}
+                      className="mt-1 text-sm w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="Father">Father</option>
+                      <option value="Mother">Mother</option>
+                      <option value="Guardian">Guardian</option>
+                    </select>
                   ) : (
                     <p className="text-sm text-gray-800">{parentData.relationship}</p>
                   )}
