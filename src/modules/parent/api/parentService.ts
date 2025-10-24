@@ -13,7 +13,6 @@ export interface Parent {
   fullName: string;
   email: string;
   phoneNumber?: string;
-  address?: string;
   relationship?: string;
   contactInfo?: string;
 }
@@ -149,8 +148,27 @@ export const ParentService = {
       email: data.data?.email || '',
       phoneNumber: parentData.data?.ContactInfo || '',
       contactInfo: parentData.data?.ContactInfo || '',
-      relationship: 'Parent'
+      relationship: parentData.data?.Relationship || 'Parent'
     };
+  },
+
+  // Update parent profile data
+  async updateParentProfile(updates: Partial<Parent>): Promise<Parent> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    const res = await fetch(`${API_BASE_URL}/parent/profile`, {
+      method: 'PUT',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(updates)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to update parent profile');
+    
+    return data.data;
   },
 
   // ===== ENROLLMENT FOLLOW-UP DOCUMENTS =====
