@@ -65,7 +65,7 @@ export default function ESP32Control() {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
   // Destructive confirmation modal
-  const [confirmModal, setConfirmModal] = useState<{open: boolean; action: 'reset'|'clear_all'|null; text: string}>({open:false, action:null, text:''});
+  const [confirmModal, setConfirmModal] = useState<{open: boolean; action: 'restart'|'test_connection'|'reset'|'clear_all'|null; text: string}>({open:false, action:null, text:''});
   // Fingerprint delete confirmation
   const [confirmDeleteFingerprint, setConfirmDeleteFingerprint] = useState<{open: boolean; studentId: string; studentName: string}>({open: false, studentId: '', studentName: ''});
 
@@ -244,7 +244,11 @@ export default function ESP32Control() {
     if (confirmModal.text !== required) return;
     try {
       setActionLoading(confirmModal.action || '');
-      if (confirmModal.action === 'reset') {
+      if (confirmModal.action === 'restart') {
+        await ESP32Service.sendCommand(selectedDevice.DeviceID, 'restart');
+      } else if (confirmModal.action === 'test_connection') {
+        await ESP32Service.sendCommand(selectedDevice.DeviceID, 'test_connection');
+      } else if (confirmModal.action === 'reset') {
         await ESP32Service.sendCommand(selectedDevice.DeviceID, 'reset');
       } else if (confirmModal.action === 'clear_all') {
         await ESP32Service.clearAllFingerprints(selectedDevice.DeviceID);
@@ -540,11 +544,7 @@ export default function ESP32Control() {
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Device Controls</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <button
-                    onClick={() => {
-                      if (confirm('Are you sure you want to restart this device now?')) {
-                        handleDeviceAction('restart', selectedDevice.DeviceID);
-                      }
-                    }}
+                    onClick={() => setConfirmModal({ open:true, action:'restart', text:'' })}
                     disabled={!isDeviceOnline || actionLoading === 'restart'}
                     className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                     title={!isDeviceOnline ? 'Device must be online to control' : ''}
@@ -554,7 +554,7 @@ export default function ESP32Control() {
                   </button>
                   
                   <button
-                    onClick={() => handleDeviceAction('test_connection', selectedDevice.DeviceID)}
+                    onClick={() => setConfirmModal({ open:true, action:'test_connection', text:'' })}
                     disabled={!isDeviceOnline || actionLoading === 'test_connection'}
                     className="flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
                     title={!isDeviceOnline ? 'Device must be online to control' : ''}
@@ -986,10 +986,16 @@ export default function ESP32Control() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-[520px] max-w-[95vw]">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {confirmModal.action === 'reset' ? 'Confirm Factory Reset' : 'Confirm Clear All Fingerprints'}
+              {confirmModal.action === 'restart' ? 'Confirm Device Restart' :
+               confirmModal.action === 'test_connection' ? 'Confirm Connection Test' :
+               confirmModal.action === 'reset' ? 'Confirm Factory Reset' : 'Confirm Clear All Fingerprints'}
             </h3>
             <p className="text-sm text-gray-700 mb-4">
-              {confirmModal.action === 'reset'
+              {confirmModal.action === 'restart'
+                ? 'This will restart the device. The device will temporarily disconnect and may take a few minutes to come back online.'
+                : confirmModal.action === 'test_connection'
+                ? 'This will send a test command to the device to verify connectivity and functionality.'
+                : confirmModal.action === 'reset'
                 ? 'This will clear all templates from the sensor and database mappings, and restart the device.'
                 : 'This will clear all fingerprint templates from the database and instruct the sensor to clear as well.'}
             </p>
@@ -1006,7 +1012,12 @@ export default function ESP32Control() {
               <button
                 onClick={confirmDangerAction}
                 disabled={confirmModal.text !== selectedDevice.DeviceID || !!actionLoading}
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                className={`px-4 py-2 text-white rounded hover:opacity-90 disabled:opacity-50 ${
+                  confirmModal.action === 'restart' ? 'bg-blue-600 hover:bg-blue-700' :
+                  confirmModal.action === 'test_connection' ? 'bg-green-600 hover:bg-green-700' :
+                  confirmModal.action === 'reset' ? 'bg-yellow-600 hover:bg-yellow-700' :
+                  'bg-red-600 hover:bg-red-700'
+                }`}
               >
                 {actionLoading ? 'Working...' : 'Confirm'}
               </button>

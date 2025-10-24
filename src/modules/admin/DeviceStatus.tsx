@@ -137,11 +137,11 @@ export default function DeviceStatus() {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200" title="Total fingerprint scans recorded in the last 24 hours">
+            <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200" title="Total attendance scans (time in/out) recorded in the last 24 hours">
               <p className="text-2xl font-bold text-green-600">{status?.statistics?.totalOperations ?? 0}</p>
               <p className="text-sm text-gray-600">Scans Today</p>
             </div>
-            <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200" title="Percentage of successful scans out of total scans in the last 24 hours">
+            <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200" title="Percentage of successful attendance scans out of total attendance scans in the last 24 hours">
               <p className="text-2xl font-bold text-blue-600">
                 {status?.statistics && status.statistics.totalOperations > 0 
                   ? Math.round((status.statistics.successfulOperations / status.statistics.totalOperations) * 100)
@@ -153,7 +153,11 @@ export default function DeviceStatus() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <button
-              onClick={() => handleAction('restart')}
+              onClick={() => {
+                if (confirm('Are you sure you want to restart the device? This will temporarily disconnect the device.')) {
+                  handleAction('restart');
+                }
+              }}
               disabled={!selectedDevice || !online || actionLoading === 'restart'}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               title={!online ? 'Device must be online to control' : ''}
@@ -162,7 +166,11 @@ export default function DeviceStatus() {
               <span>Restart</span>
             </button>
             <button
-              onClick={() => handleAction('test_connection')}
+              onClick={() => {
+                if (confirm('Are you sure you want to test the device connection? This will send a test command to the device.')) {
+                  handleAction('test_connection');
+                }
+              }}
               disabled={!selectedDevice || !online || actionLoading === 'test_connection'}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
               title={!online ? 'Device must be online to control' : ''}
@@ -171,7 +179,11 @@ export default function DeviceStatus() {
               <span>Test</span>
             </button>
             <button
-              onClick={() => handleAction('reset')}
+              onClick={() => {
+                if (confirm('Are you sure you want to reset the device? This will clear all fingerprints and reset the device to factory settings.')) {
+                  handleAction('reset');
+                }
+              }}
               disabled={!selectedDevice || !online || actionLoading === 'reset'}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50"
               title={!online ? 'Device must be online to control' : ''}
@@ -180,7 +192,11 @@ export default function DeviceStatus() {
               <span>Reset</span>
             </button>
             <button
-              onClick={() => handleAction('clear_all')}
+              onClick={() => {
+                if (confirm('Are you sure you want to clear all fingerprints? This will remove all enrolled fingerprints from the device and database.')) {
+                  handleAction('clear_all');
+                }
+              }}
               disabled={!selectedDevice || !online || actionLoading === 'clear_all'}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               title={!online ? 'Device must be online to control' : ''}

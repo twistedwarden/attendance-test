@@ -102,7 +102,7 @@ router.get('/devices/:deviceId/status', async (req, res) => {
       LIMIT 10
     `, [deviceId]);
     
-    // Get device statistics
+    // Get device statistics - only count actual attendance scans (time in/out), not device commands
     const [stats] = await pool.query(`
       SELECT 
         COUNT(*) as totalOperations,
@@ -112,6 +112,7 @@ router.get('/devices/:deviceId/status', async (req, res) => {
         0 as avgResponseTime
       FROM fingerprint_log 
       WHERE ESP32DeviceID = ? 
+      AND Action = 'verify'
       AND Timestamp >= DATE_SUB(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '+08:00'), INTERVAL 24 HOUR)
     `, [deviceId]);
     
