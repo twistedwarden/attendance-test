@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   Wifi, 
   Power, 
@@ -68,6 +68,24 @@ export default function ESP32Control() {
   const [confirmModal, setConfirmModal] = useState<{open: boolean; action: 'reset'|'clear_all'|null; text: string}>({open:false, action:null, text:''});
   // Fingerprint delete confirmation
   const [confirmDeleteFingerprint, setConfirmDeleteFingerprint] = useState<{open: boolean; studentId: string; studentName: string}>({open: false, studentId: '', studentName: ''});
+
+  // Calculate if device is actually online (not just active in database)
+  const isDeviceOnline = useMemo(() => {
+    if (!deviceStatus || !selectedDevice) return false;
+    
+    // Use health information from API as primary source
+    if (deviceStatus.health?.connection) {
+      return deviceStatus.health.connection === 'online';
+    }
+    
+    // Fallback: check if device was seen recently (within last 5 minutes)
+    const lastSeen = new Date(selectedDevice.LastSeen);
+    const now = new Date();
+    const timeDiff = now.getTime() - lastSeen.getTime();
+    const isRecent = timeDiff < 5 * 60 * 1000; // 5 minutes in milliseconds
+    
+    return selectedDevice.Status === 'active' && isRecent;
+  }, [deviceStatus, selectedDevice]);
 
   useEffect(() => {
     loadDevices();
@@ -468,9 +486,12 @@ export default function ESP32Control() {
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900">Device Status</h3>
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(selectedDevice.Status)}`}>
-                    {selectedDevice.Status}
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    <div className={`w-2 h-2 rounded-full ${isDeviceOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${isDeviceOnline ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                      {isDeviceOnline ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
                 </div>
                 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -524,8 +545,9 @@ export default function ESP32Control() {
                         handleDeviceAction('restart', selectedDevice.DeviceID);
                       }
                     }}
-                    disabled={actionLoading === 'restart'}
+                    disabled={!isDeviceOnline || actionLoading === 'restart'}
                     className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    title={!isDeviceOnline ? 'Device must be online to control' : ''}
                   >
                     <Power className="h-4 w-4" />
                     <span>Restart</span>
@@ -533,8 +555,9 @@ export default function ESP32Control() {
                   
                   <button
                     onClick={() => handleDeviceAction('test_connection', selectedDevice.DeviceID)}
-                    disabled={actionLoading === 'test_connection'}
+                    disabled={!isDeviceOnline || actionLoading === 'test_connection'}
                     className="flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    title={!isDeviceOnline ? 'Device must be online to control' : ''}
                   >
                     <Wifi className="h-4 w-4" />
                     <span>Test</span>
@@ -542,8 +565,9 @@ export default function ESP32Control() {
                   
                   <button
                     onClick={() => setConfirmModal({ open:true, action:'reset', text:'' })}
-                    disabled={actionLoading === 'reset'}
+                    disabled={!isDeviceOnline || actionLoading === 'reset'}
                     className="flex items-center justify-center space-x-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50"
+                    title={!isDeviceOnline ? 'Device must be online to control' : ''}
                   >
                     <RefreshCw className="h-4 w-4" />
                     <span>Reset</span>
@@ -551,8 +575,9 @@ export default function ESP32Control() {
                   
                   <button
                     onClick={() => handleClearFingerprints(selectedDevice.DeviceID)}
-                    disabled={actionLoading === 'clear_fingerprints'}
+                    disabled={!isDeviceOnline || actionLoading === 'clear_fingerprints'}
                     className="flex items-center justify-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                    title={!isDeviceOnline ? 'Device must be online to control' : ''}
                   >
                     <Trash2 className="h-4 w-4" />
                     <span>Clear All</span>
@@ -571,8 +596,9 @@ export default function ESP32Control() {
                       }));
                       setShowSettingsModal(true);
                     }}
-                    disabled={actionLoading === 'update_settings'}
+                    disabled={!isDeviceOnline || actionLoading === 'update_settings'}
                     className="flex items-center justify-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                    title={!isDeviceOnline ? 'Device must be online to control' : ''}
                   >
                     <Wifi className="h-4 w-4" />
                     <span>Update Settings</span>
@@ -585,8 +611,9 @@ export default function ESP32Control() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <button
                       onClick={() => setShowEnrollModal(true)}
-                      disabled={actionLoading === 'enroll'}
+                      disabled={!isDeviceOnline || actionLoading === 'enroll'}
                       className="flex items-center justify-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                      title={!isDeviceOnline ? 'Device must be online to control' : ''}
                     >
                       <Fingerprint className="h-4 w-4" />
                       <span>Enroll Fingerprint</span>
@@ -594,8 +621,9 @@ export default function ESP32Control() {
                     
                     <button
                       onClick={() => setShowDeleteModal(true)}
-                      disabled={actionLoading === 'delete'}
+                      disabled={!isDeviceOnline || actionLoading === 'delete'}
                       className="flex items-center justify-center space-x-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                      title={!isDeviceOnline ? 'Device must be online to control' : ''}
                     >
                       <Trash2 className="h-4 w-4" />
                       <span>Delete Fingerprint</span>

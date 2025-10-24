@@ -47,22 +47,17 @@ export default function DeviceStatus() {
   const online = useMemo(() => {
     if (!status) return false;
     
-    // Primary check: if device status is active, consider it online
-    if (status.device && status.device.Status === 'active') {
-      return true;
-    }
-    
-    // Use health information from API if available
+    // Use health information from API as primary source
     if (status.health?.connection) {
       return status.health.connection === 'online';
     }
     
-    // Fallback: check if device was seen recently (within last 10 minutes)
+    // Fallback: check if device was seen recently (within last 5 minutes)
     if (status.device) {
       const lastSeen = new Date(status.device.LastSeen);
       const now = new Date();
       const timeDiff = now.getTime() - lastSeen.getTime();
-      const isRecent = timeDiff < 10 * 60 * 1000; // 10 minutes in milliseconds
+      const isRecent = timeDiff < 5 * 60 * 1000; // 5 minutes in milliseconds
       
       return status.device.Status === 'active' && isRecent;
     }
@@ -142,11 +137,11 @@ export default function DeviceStatus() {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
+            <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200" title="Total fingerprint scans recorded in the last 24 hours">
               <p className="text-2xl font-bold text-green-600">{status?.statistics?.totalOperations ?? 0}</p>
               <p className="text-sm text-gray-600">Scans Today</p>
             </div>
-            <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200" title="Percentage of successful scans out of total scans in the last 24 hours">
               <p className="text-2xl font-bold text-blue-600">
                 {status?.statistics && status.statistics.totalOperations > 0 
                   ? Math.round((status.statistics.successfulOperations / status.statistics.totalOperations) * 100)
@@ -159,32 +154,36 @@ export default function DeviceStatus() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <button
               onClick={() => handleAction('restart')}
-              disabled={!selectedDevice || actionLoading === 'restart'}
+              disabled={!selectedDevice || !online || actionLoading === 'restart'}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              title={!online ? 'Device must be online to control' : ''}
             >
               <Power className="h-4 w-4" />
               <span>Restart</span>
             </button>
             <button
               onClick={() => handleAction('test_connection')}
-              disabled={!selectedDevice || actionLoading === 'test_connection'}
+              disabled={!selectedDevice || !online || actionLoading === 'test_connection'}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              title={!online ? 'Device must be online to control' : ''}
             >
               <Wifi className="h-4 w-4" />
               <span>Test</span>
             </button>
             <button
               onClick={() => handleAction('reset')}
-              disabled={!selectedDevice || actionLoading === 'reset'}
+              disabled={!selectedDevice || !online || actionLoading === 'reset'}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50"
+              title={!online ? 'Device must be online to control' : ''}
             >
               <RefreshCw className="h-4 w-4" />
               <span>Reset</span>
             </button>
             <button
               onClick={() => handleAction('clear_all')}
-              disabled={!selectedDevice || actionLoading === 'clear_all'}
+              disabled={!selectedDevice || !online || actionLoading === 'clear_all'}
               className="flex items-center justify-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              title={!online ? 'Device must be online to control' : ''}
             >
               <RefreshCw className="h-4 w-4" />
               <span>Clear Fingerprints</span>

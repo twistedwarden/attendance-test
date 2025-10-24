@@ -121,9 +121,9 @@ router.get('/devices/:deviceId/status', async (req, res) => {
     const now = new Date();
     const timeDiff = now.getTime() - lastSeen.getTime();
     
-    // Device is online if status is active, regardless of last seen time
-    // Only consider offline if status is inactive/maintenance OR last seen is very old (>30 minutes)
-    const isOnline = deviceData.Status === 'active' && timeDiff < 30 * 60 * 1000; // 30 minutes threshold
+    // Device is online only if status is active AND last seen is recent (within 5 minutes)
+    // This ensures devices that are unplugged or disconnected show as offline
+    const isOnline = deviceData.Status === 'active' && timeDiff < 5 * 60 * 1000; // 5 minutes threshold
     
     res.json({
       success: true,
