@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Mail, Phone, MapPin, Edit, Save, X, Users } from 'lucide-react';
+import { User, Mail, Phone, Edit, Save, X, Users, ContactInfo } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -16,6 +16,7 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
   const [editedData, setEditedData] = useState<Parent | null>(parentData);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showContactModal, setShowContactModal] = useState(false);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -193,38 +194,36 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
               </div>
             </div>
 
-            {/* Contact Information - Compact Grid */}
+            {/* Contact Information - Single Icon */}
             <div className="space-y-3">
               <div className="flex items-start space-x-2">
-                <Mail size={14} className="text-gray-500 mt-1" />
+                <ContactInfo size={14} className="text-gray-500 mt-1" />
                 <div className="flex-1 min-w-0">
-                  <label className="text-xs font-medium text-gray-700 block">Email</label>
+                  <label className="text-xs font-medium text-gray-700 block">Contact Information</label>
                   {isEditing ? (
-                    <Input
-                      type="email"
-                      value={editedData.email}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('email', e.target.value)}
-                      className="mt-1 text-sm"
-                    />
+                    <div className="space-y-2 mt-1">
+                      <Input
+                        type="email"
+                        value={editedData.email}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('email', e.target.value)}
+                        className="text-sm"
+                        placeholder="Email"
+                      />
+                      <Input
+                        type="tel"
+                        value={editedData.phoneNumber}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('phoneNumber', e.target.value)}
+                        className="text-sm"
+                        placeholder="Phone Number"
+                      />
+                    </div>
                   ) : (
-                    <p className="text-sm text-gray-800 truncate">{parentData.email}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-start space-x-2">
-                <Phone size={14} className="text-gray-500 mt-1" />
-                <div className="flex-1 min-w-0">
-                  <label className="text-xs font-medium text-gray-700 block">Phone</label>
-                  {isEditing ? (
-                    <Input
-                      type="tel"
-                      value={editedData.phoneNumber}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('phoneNumber', e.target.value)}
-                      className="mt-1 text-sm"
-                    />
-                  ) : (
-                    <p className="text-sm text-gray-800">{parentData.phoneNumber}</p>
+                    <button
+                      onClick={() => setShowContactModal(true)}
+                      className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                    >
+                      View Contact Details
+                    </button>
                   )}
                 </div>
               </div>
@@ -339,6 +338,50 @@ const CompactProfile = ({ parentData, students }: CompactProfileProps) => {
 
       {/* Change Password */}
       <ChangePasswordCard />
+
+      {/* Contact Information Modal */}
+      {showContactModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Contact Information</h3>
+              <button
+                onClick={() => setShowContactModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center space-x-3">
+                <Mail size={16} className="text-gray-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Email</p>
+                  <p className="text-sm text-gray-900">{parentData?.email || 'Not provided'}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-3">
+                <Phone size={16} className="text-gray-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Phone</p>
+                  <p className="text-sm text-gray-900">{parentData?.phoneNumber || 'Not provided'}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setShowContactModal(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
