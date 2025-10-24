@@ -1,4 +1,4 @@
-import { Home, Users, CalendarClock, Bell, BarChart3, Settings, Smartphone, Calendar, Fingerprint, X, Shield, FileText } from 'lucide-react';
+import { Home, Users, CalendarClock, Bell, BarChart3, Settings, Smartphone, Calendar, Fingerprint, X, Shield, FileText, GraduationCap } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
 interface AdminSidebarProps {
@@ -22,6 +22,7 @@ export default function AdminSidebar({
     { id: 'schedules', label: 'Schedules', icon: CalendarClock, description: 'Subject and Teacher Schedules' },
     { id: 'students', label: 'Students', icon: Users, description: 'Student Management' },
     { id: 'enrollments', label: 'Enrollments', icon: FileText, description: 'Review & Approve' },
+    { id: 'school-years', label: 'School Years', icon: GraduationCap, description: 'Academic Year Management' },
     { id: 'users', label: 'User Accounts', icon: Shield, description: 'Manage Users' },
     { id: 'notifications', label: 'Notifications', icon: Bell, description: 'System Alerts' },
     { id: 'reports', label: 'Reports', icon: BarChart3, description: 'Analytics & Data' },

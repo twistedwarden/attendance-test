@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateToken, requireTeacher } from '../middleware/auth.js';
 import { pool } from '../config/database.js';
+import { getActiveSchoolYear } from '../middleware/validation.js';
 
 const router = express.Router();
 
@@ -11,6 +12,10 @@ router.use(authenticateToken, requireTeacher);
 router.get('/schedules', async (req, res) => {
   try {
     const teacherUserId = req.user.userId;
+    
+    // Get active school year
+    const activeYear = await getActiveSchoolYear();
+    
     const [rows] = await pool.execute(
       `SELECT 
          ts.ScheduleID AS id,
@@ -27,9 +32,9 @@ router.get('/schedules', async (req, res) => {
        FROM teacherschedule ts
        LEFT JOIN section sec ON sec.SectionID = ts.SectionID
        LEFT JOIN subject s ON s.SubjectID = ts.SubjectID
-       WHERE ts.TeacherID = ?
+       WHERE ts.TeacherID = ? AND ts.SchoolYearID = ?
        ORDER BY FIELD(ts.DayOfWeek,'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), ts.TimeIn`,
-      [teacherUserId]
+      [teacherUserId, activeYear.schoolYearId]
     );
 
     const data = rows.map(r => ({
@@ -46,7 +51,14 @@ router.get('/schedules', async (req, res) => {
       subjectName: r.subjectName || 'Subject'
     }));
 
-    return res.json({ success: true, data });
+    return res.json({ 
+      success: true, 
+      data,
+      schoolYear: {
+        schoolYearId: activeYear.schoolYearId,
+        yearLabel: activeYear.yearLabel
+      }
+    });
   } catch (error) {
     console.error('Teacher get schedules error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error' });
@@ -62,8 +74,14 @@ router.get('/students', async (req, res) => {
       return res.status(400).json({ success: false, message: 'scheduleId is required' });
     }
 
-    // Verify schedule belongs to teacher
-    const [schedRows] = await pool.execute('SELECT ScheduleID FROM teacherschedule WHERE ScheduleID = ? AND TeacherID = ? LIMIT 1', [scheduleId, teacherUserId]);
+    // Get active school year
+    const activeYear = await getActiveSchoolYear();
+
+    // Verify schedule belongs to teacher and is in active year
+    const [schedRows] = await pool.execute(
+      'SELECT ScheduleID FROM teacherschedule WHERE ScheduleID = ? AND TeacherID = ? AND SchoolYearID = ? LIMIT 1', 
+      [scheduleId, teacherUserId, activeYear.schoolYearId]
+    );
     if (!Array.isArray(schedRows) || schedRows.length === 0) {
       return res.status(403).json({ success: false, message: 'You do not have access to this schedule' });
     }
@@ -81,8 +99,9 @@ router.get('/students', async (req, res) => {
        LEFT JOIN section sec ON sec.SectionID = ts.SectionID
        WHERE ss.ScheduleID = ?
          AND (sr.EnrollmentStatus IN ('approved','enrolled','Active'))
+         AND sr.SchoolYearID = ?
        ORDER BY sr.FullName`,
-      [scheduleId]
+      [scheduleId, activeYear.schoolYearId]
     );
 
     return res.json({ success: true, data: rows });

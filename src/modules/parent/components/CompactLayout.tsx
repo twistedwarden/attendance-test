@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import ParentHeader from './ParentHeader';
 import { Student, Parent } from '../api/parentService';
+import { SchoolYear } from '../../../types';
 
 interface CompactLayoutProps {
   selectedStudent: Student | null;
@@ -11,9 +12,10 @@ interface CompactLayoutProps {
   parent: Parent | null;
   onEnrollNewStudent?: () => void;
   enrollmentEnabled?: boolean;
+  activeYear?: SchoolYear | null;
 }
 
-const CompactLayout = ({ selectedStudent, onStudentChange, students, parent, onEnrollNewStudent, enrollmentEnabled = true }: CompactLayoutProps) => {
+const CompactLayout = ({ selectedStudent, onStudentChange, students, parent, onEnrollNewStudent, enrollmentEnabled = true, activeYear }: CompactLayoutProps) => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const handleMobileMenuToggle = () => {
@@ -40,7 +42,7 @@ const CompactLayout = ({ selectedStudent, onStudentChange, students, parent, onE
       
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        <ParentHeader onMobileMenuToggle={handleMobileMenuToggle} />
+        <ParentHeader onMobileMenuToggle={handleMobileMenuToggle} activeYear={activeYear} />
         <div className="flex-1 overflow-auto p-6">
           <Outlet />
         </div>

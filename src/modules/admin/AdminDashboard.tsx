@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { SchoolYearService } from '../shared/schoolYearService';
+import { SchoolYear } from '../../types';
 // Admin Dashboard Component
 import AdminSidebar from './AdminSidebar';
 import AdminHeader from './AdminHeader';
@@ -14,11 +16,13 @@ import DeviceStatus from './DeviceStatus';
 import SettingsSection from './SettingsSection';
 import UserAccountManagement from './UserAccountManagement';
 import AuditTrailSection from './AuditTrailSection';
+import SchoolYearSection from './SchoolYearSection';
 
 export default function AdminDashboard() {
   const { user } = useAuth();
   const [activeSection, setActiveSection] = useState('dashboard');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [activeYear, setActiveYear] = useState<SchoolYear | null>(null);
 
   const toggleMobileSidebar = () => {
     setIsMobileSidebarOpen(!isMobileSidebarOpen);
@@ -27,6 +31,19 @@ export default function AdminDashboard() {
   const closeMobileSidebar = () => {
     setIsMobileSidebarOpen(false);
   };
+
+  useEffect(() => {
+    const loadActiveYear = async () => {
+      try {
+        const year = await SchoolYearService.getActiveSchoolYear();
+        setActiveYear(year);
+      } catch (error) {
+        console.error('Failed to load active school year:', error);
+      }
+    };
+
+    loadActiveYear();
+  }, []);
 
   const renderContent = () => {
     switch (activeSection) {
@@ -38,6 +55,8 @@ export default function AdminDashboard() {
         return <StudentsSection />;
       case 'enrollments':
         return <EnrollmentsSection />;
+      case 'school-years':
+        return <SchoolYearSection />;
       case 'users':
         return <UserAccountManagement />;
       case 'schedules':

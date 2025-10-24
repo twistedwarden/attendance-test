@@ -1,6 +1,8 @@
 import { Users, Calendar, BookOpen, TrendingUp, RefreshCw, Eye, CheckCircle, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { AdminService } from './api/adminService';
+import { SchoolYearBadge } from '../shared/SchoolYearBadge';
+import { SchoolYear } from '../../types';
 
 interface Props {
   onNavigate?: (section: string) => void;
@@ -23,6 +25,7 @@ interface EnrollmentPreviewItem {
 export default function DashboardOverview({ onNavigate }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeYear, setActiveYear] = useState<SchoolYear | null>(null);
 
   const [stats, setStats] = useState([
     { label: 'Total Students', value: '—', icon: Users, change: '', changeType: 'positive' },
@@ -38,6 +41,10 @@ export default function DashboardOverview({ onNavigate }: Props) {
     try {
       setLoading(true);
       setError(null);
+
+      // Load active school year first
+      const activeYearData = await AdminService.getActiveSchoolYear().catch(() => null);
+      setActiveYear(activeYearData);
 
       const [students, schedules, subjectToday, enrollmentsRes, teachers, enrollmentStats] = await Promise.all([
         AdminService.listStudents().catch(() => []),
@@ -103,7 +110,16 @@ export default function DashboardOverview({ onNavigate }: Props) {
     <div className="space-y-6">
       <div className="flex items-start sm:items-center justify-between gap-3 flex-col sm:flex-row">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
+          <div className="flex items-center gap-3 mb-2">
+            <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
+            {activeYear && (
+              <SchoolYearBadge 
+                yearLabel={activeYear.yearLabel} 
+                isActive={activeYear.isActive} 
+                size="md"
+              />
+            )}
+          </div>
           <p className="text-gray-600">Key insights and recent activity</p>
         </div>
         <div className="flex items-center gap-2">

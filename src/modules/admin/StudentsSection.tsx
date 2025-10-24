@@ -4,6 +4,8 @@ import { AdminService } from './api/adminService';
 import Modal from './components/Modal';
 import ConfirmModal from './components/ConfirmModal';
 import SuggestionInput from './components/SuggestionInput';
+import { SchoolYearSelector } from '../shared/SchoolYearSelector';
+import { SchoolYear } from '../../types';
 import { toast } from 'sonner';
 
 interface StudentVM {
@@ -30,6 +32,11 @@ export default function StudentsSection() {
   const [sectionFilter, setSectionFilter] = useState('All Sections');
   const [fingerFilter, setFingerFilter] = useState<'all'|'available'|'missing'>('all');
   const [statusFilter, setStatusFilter] = useState('active');
+  
+  // School year state
+  const [schoolYears, setSchoolYears] = useState<SchoolYear[]>([]);
+  const [selectedYearId, setSelectedYearId] = useState<number | null>(null);
+  const [activeYear, setActiveYear] = useState<SchoolYear | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -94,11 +101,29 @@ export default function StudentsSection() {
   const [selectedStudent, setSelectedStudent] = useState<StudentVM | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
 
+  const loadSchoolYears = async () => {
+    try {
+      const years = await AdminService.getSchoolYears();
+      setSchoolYears(years);
+      
+      // Set active year as default
+      const active = years.find(year => year.isActive);
+      if (active) {
+        setActiveYear(active);
+        setSelectedYearId(active.schoolYearId);
+      }
+    } catch (e: any) {
+      console.error('Failed to load school years:', e);
+    }
+  };
+
   const load = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await AdminService.listStudents();
+      const data = await AdminService.listStudents({
+        schoolYearId: selectedYearId || undefined
+      });
       setStudents(
         (data || []).map((r: any) => ({
           id: r.id ?? r.StudentID,
@@ -143,9 +168,15 @@ export default function StudentsSection() {
   };
 
   useEffect(() => { 
-    load(); 
+    loadSchoolYears();
     loadSuggestions();
   }, []);
+
+  useEffect(() => {
+    if (selectedYearId) {
+      load();
+    }
+  }, [selectedYearId]);
 
   // Clear section if grade changes to a non-matching set
   useEffect(() => {
@@ -475,10 +506,23 @@ export default function StudentsSection() {
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Student Management</h2>
           <p className="text-sm sm:text-base text-gray-600">Manage student enrollment and fingerprint data</p>
         </div>
-        <button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm sm:text-base w-full sm:w-auto justify-center">
-          <UserPlus className="h-4 w-4" />
-          <span>Enroll Student</span>
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          {schoolYears.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-700">School Year:</span>
+              <SchoolYearSelector
+                schoolYears={schoolYears}
+                selectedYearId={selectedYearId || 0}
+                onChange={setSelectedYearId}
+                className="w-48"
+              />
+            </div>
+          )}
+          <button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm sm:text-base w-full sm:w-auto justify-center">
+            <UserPlus className="h-4 w-4" />
+            <span>Enroll Student</span>
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">

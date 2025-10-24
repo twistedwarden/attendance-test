@@ -19,5 +19,15 @@ CREATE TABLE IF NOT EXISTS `subjectattendance` (
   CONSTRAINT `subjectattendance_ibfk_3` FOREIGN KEY (`ValidatedBy`) REFERENCES `useraccount` (`UserID`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Remove status column from attendancelog table
-ALTER TABLE `attendancelog` DROP COLUMN `Status`;
+-- Remove status column from attendancelog table (if it exists)
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+     WHERE TABLE_SCHEMA = DATABASE() 
+     AND TABLE_NAME = 'attendancelog' 
+     AND COLUMN_NAME = 'Status') > 0,
+    'ALTER TABLE `attendancelog` DROP COLUMN `Status`',
+    'SELECT "Status column does not exist, skipping drop" as message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

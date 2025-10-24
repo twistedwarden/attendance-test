@@ -25,21 +25,58 @@ AND ts1.DayOfWeek = ts2.DayOfWeek
 AND ts1.TimeIn = ts2.TimeIn 
 AND ts1.TimeOut = ts2.TimeOut;
 
--- Add unique constraint to prevent teacher overlaps
+-- Add unique constraint to prevent teacher overlaps (if it doesn't exist)
 -- This ensures a teacher cannot be assigned to multiple classes at the same time
-ALTER TABLE `teacherschedule` 
-ADD CONSTRAINT `unique_teacher_time` 
-UNIQUE (`TeacherID`, `DayOfWeek`, `TimeIn`, `TimeOut`);
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
+     WHERE TABLE_SCHEMA = DATABASE() 
+     AND TABLE_NAME = 'teacherschedule' 
+     AND INDEX_NAME = 'unique_teacher_time') = 0,
+    'ALTER TABLE `teacherschedule` ADD CONSTRAINT `unique_teacher_time` UNIQUE (`TeacherID`, `DayOfWeek`, `TimeIn`, `TimeOut`)',
+    'SELECT "Constraint unique_teacher_time already exists, skipping add" as message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
--- Add unique constraint to prevent section overlaps
+-- Add unique constraint to prevent section overlaps (if it doesn't exist)
 -- This ensures a section cannot be scheduled for multiple subjects at the same time
-ALTER TABLE `teacherschedule` 
-ADD CONSTRAINT `unique_section_time` 
-UNIQUE (`SectionID`, `DayOfWeek`, `TimeIn`, `TimeOut`);
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
+     WHERE TABLE_SCHEMA = DATABASE() 
+     AND TABLE_NAME = 'teacherschedule' 
+     AND INDEX_NAME = 'unique_section_time') = 0,
+    'ALTER TABLE `teacherschedule` ADD CONSTRAINT `unique_section_time` UNIQUE (`SectionID`, `DayOfWeek`, `TimeIn`, `TimeOut`)',
+    'SELECT "Constraint unique_section_time already exists, skipping add" as message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
--- Add index for better performance on overlap checks
-CREATE INDEX `idx_teacher_day_time` ON `teacherschedule` (`TeacherID`, `DayOfWeek`, `TimeIn`, `TimeOut`);
-CREATE INDEX `idx_section_day_time` ON `teacherschedule` (`SectionID`, `DayOfWeek`, `TimeIn`, `TimeOut`);
+-- Add index for better performance on overlap checks (if they don't exist)
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
+     WHERE TABLE_SCHEMA = DATABASE() 
+     AND TABLE_NAME = 'teacherschedule' 
+     AND INDEX_NAME = 'idx_teacher_day_time') = 0,
+    'CREATE INDEX `idx_teacher_day_time` ON `teacherschedule` (`TeacherID`, `DayOfWeek`, `TimeIn`, `TimeOut`)',
+    'SELECT "Index idx_teacher_day_time already exists, skipping create" as message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
+     WHERE TABLE_SCHEMA = DATABASE() 
+     AND TABLE_NAME = 'teacherschedule' 
+     AND INDEX_NAME = 'idx_section_day_time') = 0,
+    'CREATE INDEX `idx_section_day_time` ON `teacherschedule` (`SectionID`, `DayOfWeek`, `TimeIn`, `TimeOut`)',
+    'SELECT "Index idx_section_day_time already exists, skipping create" as message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- Note: These constraints will prevent:
 -- 1. A teacher from being assigned to multiple classes at the same time on the same day

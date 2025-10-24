@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserPlus, Upload, ArrowLeft, CheckCircle, FileText } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
+import { SchoolYearBadge } from '../../shared/SchoolYearBadge';
+import { SchoolYear } from '../../../types';
+import { ParentService } from '../api/parentService';
 
 interface StudentEnrollmentData {
   firstName: string;
@@ -30,6 +33,7 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
   const [success, setSuccess] = useState(false);
   const [enrolledStudent, setEnrolledStudent] = useState<any>(null);
   const [selectedGradeLevel, setSelectedGradeLevel] = useState('');
+  const [activeYear, setActiveYear] = useState<SchoolYear | null>(null);
 
   const [enrollmentData, setEnrollmentData] = useState<StudentEnrollmentData>({
     firstName: '',
@@ -44,6 +48,22 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
     documents: [],
     additionalInfo: ''
   });
+
+  useEffect(() => {
+    const loadActiveYear = async () => {
+      try {
+        console.log('Loading active school year...');
+        const year = await ParentService.getActiveSchoolYear();
+        console.log('Active school year loaded:', year);
+        setActiveYear(year);
+      } catch (error) {
+        console.error('Failed to load active school year:', error);
+        setError('Failed to load school year information. Please refresh the page.');
+      }
+    };
+
+    loadActiveYear();
+  }, []);
 
   // Document requirements for Philippine schools
   const documentRequirements: DocumentRequirement[] = [
@@ -261,6 +281,16 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
             </div>
             <h2 className="text-3xl font-bold text-gray-900">Enroll New Student</h2>
             <p className="text-gray-600 mt-2">Add a student to your account</p>
+            {activeYear && (
+              <div className="mt-3">
+                <span className="text-sm text-gray-500 mr-2">Enrolling for:</span>
+                <SchoolYearBadge 
+                  yearLabel={activeYear.yearLabel} 
+                  isActive={activeYear.isActive} 
+                  size="md"
+                />
+              </div>
+            )}
           </div>
 
           {error && (
@@ -270,6 +300,25 @@ export default function StudentEnrollmentForm({ onBack, onSuccess }: { onBack: (
           )}
 
           <form onSubmit={handleSubmit} className="space-y-8">
+            {/* School Year Information */}
+            {activeYear && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-blue-900">Academic Year</h4>
+                    <p className="text-sm text-blue-700">
+                      Your child will be enrolled for the {activeYear.yearLabel} school year
+                    </p>
+                  </div>
+                  <SchoolYearBadge 
+                    yearLabel={activeYear.yearLabel} 
+                    isActive={activeYear.isActive} 
+                    size="lg"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Student Information */}
             <div className="space-y-6">
               <div>

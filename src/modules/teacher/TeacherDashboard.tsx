@@ -9,6 +9,8 @@ import TeacherReportsView from './TeacherReportsView';
 import TeacherNotificationsView from './TeacherNotificationsView';
 import { TeacherExcuseLetterView } from './components/TeacherExcuseLetterView';
 import AccountSettings from '../admin/components/AccountSettings';
+import { SchoolYearService } from '../shared/schoolYearService';
+import { SchoolYear } from '../../types';
 
 export default function TeacherDashboard() {
   const { user } = useAuth();
@@ -16,16 +18,38 @@ export default function TeacherDashboard() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [schedules, setSchedules] = useState<TeacherSchedule[]>([]);
   const [students, setStudents] = useState<TeacherStudent[]>([]);
+  const [activeYear, setActiveYear] = useState<SchoolYear | null>(null);
 
   useEffect(() => {
     const loadTeacherData = async () => {
       try {
-        const [schedulesData, studentsData] = await Promise.all([
-          TeacherService.getSchedules(),
-          TeacherService.getStudents(1) // Default to first schedule, will be updated
-        ]);
-        setSchedules(schedulesData);
-        setStudents(studentsData);
+        // Load school year first (this should always work)
+        const activeYearData = await SchoolYearService.getActiveSchoolYear();
+        console.log('TeacherDashboard - Active year loaded:', activeYearData);
+        setActiveYear(activeYearData);
+
+        // Try to load schedules and students, but don't fail if there are permission issues
+        try {
+          const schedulesData = await TeacherService.getSchedules();
+          setSchedules(schedulesData);
+          
+          // Only try to load students if we have schedules
+          if (schedulesData.length > 0) {
+            try {
+              const studentsData = await TeacherService.getStudents(schedulesData[0].id);
+              setStudents(studentsData);
+            } catch (studentError) {
+              console.warn('Could not load students (permission issue):', studentError);
+              setStudents([]);
+            }
+          } else {
+            setStudents([]);
+          }
+        } catch (scheduleError) {
+          console.warn('Could not load schedules (permission issue):', scheduleError);
+          setSchedules([]);
+          setStudents([]);
+        }
       } catch (error) {
         console.error('Error loading teacher data:', error);
       }
@@ -78,7 +102,7 @@ export default function TeacherDashboard() {
       />
       
       <div className="md:ml-64 flex flex-col min-h-screen">
-        <TeacherHeader onMobileMenuToggle={toggleMobileSidebar} />
+        <TeacherHeader onMobileMenuToggle={toggleMobileSidebar} activeYear={activeYear} />
         
         <main className="flex-1 p-8">
           {renderContent()}

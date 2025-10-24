@@ -2969,4 +2969,321 @@ router.delete('/student-schedules/:id', async (req, res) => {
     }
 });
 
+// ===== SCHOOL YEAR MANAGEMENT =====
+
+// Get all school years
+router.get('/school-years', async (req, res) => {
+  try {
+    const [schoolYears] = await pool.execute(`
+      SELECT 
+        SchoolYearID as schoolYearId,
+        YearLabel as yearLabel,
+        StartDate as startDate,
+        EndDate as endDate,
+        IsActive as isActive,
+        CreatedAt as createdAt,
+        UpdatedAt as updatedAt
+      FROM schoolyear
+      ORDER BY CreatedAt DESC
+    `);
+
+    res.json({
+      success: true,
+      data: schoolYears.map(year => ({
+        ...year,
+        startDate: new Date(year.startDate).toISOString().split('T')[0],
+        endDate: new Date(year.endDate).toISOString().split('T')[0],
+        createdAt: new Date(year.createdAt).toISOString(),
+        updatedAt: new Date(year.updatedAt).toISOString()
+      }))
+    });
+  } catch (error) {
+    console.error('Get school years error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Get active school year
+router.get('/school-years/active', async (req, res) => {
+  try {
+    const [activeYear] = await pool.execute(`
+      SELECT 
+        SchoolYearID as schoolYearId,
+        YearLabel as yearLabel,
+        StartDate as startDate,
+        EndDate as endDate,
+        IsActive as isActive,
+        CreatedAt as createdAt,
+        UpdatedAt as updatedAt
+      FROM schoolyear
+      WHERE IsActive = TRUE
+      LIMIT 1
+    `);
+
+    if (activeYear.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No active school year found' 
+      });
+    }
+
+    const year = activeYear[0];
+    res.json({
+      success: true,
+      data: {
+        ...year,
+        startDate: new Date(year.startDate).toISOString().split('T')[0],
+        endDate: new Date(year.endDate).toISOString().split('T')[0],
+        createdAt: new Date(year.createdAt).toISOString(),
+        updatedAt: new Date(year.updatedAt).toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Get active school year error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Create new school year
+router.post('/school-years', async (req, res) => {
+  try {
+    const { yearLabel, startDate, endDate, isActive = false } = req.body;
+
+    // Validate required fields
+    if (!yearLabel || !startDate || !endDate) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Year label, start date, and end date are required' 
+      });
+    }
+
+    // Validate year format (YYYY-YYYY)
+    const yearFormat = /^\d{4}-\d{4}$/;
+    if (!yearFormat.test(yearLabel)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Year label must be in format YYYY-YYYY (e.g., 2024-2025)' 
+      });
+    }
+
+    // Validate dates
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (start >= end) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Start date must be before end date' 
+      });
+    }
+
+    // Check if year label already exists
+    const [existingYear] = await pool.execute(
+      'SELECT SchoolYearID FROM schoolyear WHERE YearLabel = ?',
+      [yearLabel]
+    );
+
+    if (existingYear.length > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'School year with this label already exists' 
+      });
+    }
+
+    // Insert new school year
+    const [result] = await pool.execute(
+      `INSERT INTO schoolyear (YearLabel, StartDate, EndDate, IsActive) 
+       VALUES (?, ?, ?, ?)`,
+      [yearLabel, startDate, endDate, isActive]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'School year created successfully',
+      data: { schoolYearId: result.insertId }
+    });
+  } catch (error) {
+    console.error('Create school year error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Update school year
+router.put('/school-years/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { yearLabel, startDate, endDate } = req.body;
+
+    // Validate required fields
+    if (!yearLabel || !startDate || !endDate) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Year label, start date, and end date are required' 
+      });
+    }
+
+    // Validate year format
+    const yearFormat = /^\d{4}-\d{4}$/;
+    if (!yearFormat.test(yearLabel)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Year label must be in format YYYY-YYYY' 
+      });
+    }
+
+    // Validate dates
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (start >= end) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Start date must be before end date' 
+      });
+    }
+
+    // Check if year exists
+    const [existingYear] = await pool.execute(
+      'SELECT SchoolYearID FROM schoolyear WHERE SchoolYearID = ?',
+      [id]
+    );
+
+    if (existingYear.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'School year not found' 
+      });
+    }
+
+    // Check if year label already exists (excluding current year)
+    const [duplicateYear] = await pool.execute(
+      'SELECT SchoolYearID FROM schoolyear WHERE YearLabel = ? AND SchoolYearID != ?',
+      [yearLabel, id]
+    );
+
+    if (duplicateYear.length > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'School year with this label already exists' 
+      });
+    }
+
+    // Update school year
+    await pool.execute(
+      `UPDATE schoolyear 
+       SET YearLabel = ?, StartDate = ?, EndDate = ?, UpdatedAt = NOW()
+       WHERE SchoolYearID = ?`,
+      [yearLabel, startDate, endDate, id]
+    );
+
+    res.json({
+      success: true,
+      message: 'School year updated successfully'
+    });
+  } catch (error) {
+    console.error('Update school year error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Activate school year
+router.post('/school-years/:id/activate', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if year exists
+    const [existingYear] = await pool.execute(
+      'SELECT SchoolYearID, IsActive FROM schoolyear WHERE SchoolYearID = ?',
+      [id]
+    );
+
+    if (existingYear.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'School year not found' 
+      });
+    }
+
+    if (existingYear[0].IsActive) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'School year is already active' 
+      });
+    }
+
+    // Activate the year (trigger will deactivate others)
+    await pool.execute(
+      'UPDATE schoolyear SET IsActive = TRUE WHERE SchoolYearID = ?',
+      [id]
+    );
+
+    res.json({
+      success: true,
+      message: 'School year activated successfully'
+    });
+  } catch (error) {
+    console.error('Activate school year error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Delete school year
+router.delete('/school-years/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if year exists
+    const [existingYear] = await pool.execute(
+      'SELECT SchoolYearID, IsActive FROM schoolyear WHERE SchoolYearID = ?',
+      [id]
+    );
+
+    if (existingYear.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'School year not found' 
+      });
+    }
+
+    if (existingYear[0].IsActive) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Cannot delete active school year' 
+      });
+    }
+
+    // Check if year has associated data
+    const [hasData] = await pool.execute(`
+      SELECT 
+        (SELECT COUNT(*) FROM studentrecord WHERE SchoolYearID = ?) +
+        (SELECT COUNT(*) FROM teacherschedule WHERE SchoolYearID = ?) +
+        (SELECT COUNT(*) FROM section WHERE SchoolYearID = ?) +
+        (SELECT COUNT(*) FROM attendancelog WHERE SchoolYearID = ?) +
+        (SELECT COUNT(*) FROM subjectattendance WHERE SchoolYearID = ?) +
+        (SELECT COUNT(*) FROM enrollment_review WHERE SchoolYearID = ?) +
+        (SELECT COUNT(*) FROM attendancereport WHERE SchoolYearID = ?) +
+        (SELECT COUNT(*) FROM excuseletter WHERE SchoolYearID = ?) as totalRecords
+    `, [id, id, id, id, id, id, id, id]);
+
+    if (hasData[0].totalRecords > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Cannot delete school year with associated data' 
+      });
+    }
+
+    // Delete school year
+    await pool.execute(
+      'DELETE FROM schoolyear WHERE SchoolYearID = ?',
+      [id]
+    );
+
+    res.json({
+      success: true,
+      message: 'School year deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete school year error:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 export default router; 

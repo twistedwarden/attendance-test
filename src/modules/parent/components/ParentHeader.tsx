@@ -1,12 +1,15 @@
 import { Menu, User, LogOut } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import NotificationDropdown from './NotificationDropdown';
+import { SchoolYearBadge } from '../../shared/SchoolYearBadge';
+import { SchoolYear } from '../../../types';
 
 interface ParentHeaderProps {
   onMobileMenuToggle: () => void;
+  activeYear?: SchoolYear | null;
 }
 
-export default function ParentHeader({ onMobileMenuToggle }: ParentHeaderProps) {
+export default function ParentHeader({ onMobileMenuToggle, activeYear }: ParentHeaderProps) {
   const { user, logout } = useAuth();
 
   return (
@@ -22,7 +25,16 @@ export default function ParentHeader({ onMobileMenuToggle }: ParentHeaderProps) 
 
         {/* Title */}
         <div className="hidden lg:block">
-          <h1 className="text-2xl font-bold text-gray-900">Parent Dashboard</h1>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold text-gray-900">Parent Dashboard</h1>
+            {activeYear && (
+              <SchoolYearBadge 
+                yearLabel={activeYear.yearLabel} 
+                isActive={activeYear.isActive} 
+                size="sm"
+              />
+            )}
+          </div>
           <p className="text-sm text-gray-600">Monitor your children's attendance and progress</p>
         </div>
 

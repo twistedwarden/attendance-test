@@ -5,6 +5,7 @@ import fs from 'fs';
 import jwt from 'jsonwebtoken';
 import { pool } from '../config/database.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
+import { getActiveSchoolYear } from '../middleware/validation.js';
 
 const router = express.Router();
 
@@ -50,13 +51,33 @@ const upload = multer({
 // Get registrar overview statistics
 router.get('/overview', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
   try {
-    // Get total students
+    // Get school year filter (default to active year)
+    const schoolYearId = req.query.schoolYearId;
+    let activeYear;
+    
+    if (schoolYearId) {
+      // Use specified school year
+      const [yearResult] = await pool.execute(
+        'SELECT SchoolYearID as schoolYearId, YearLabel as yearLabel FROM schoolyear WHERE SchoolYearID = ?',
+        [schoolYearId]
+      );
+      if (yearResult.length === 0) {
+        return res.status(400).json({ success: false, message: 'Invalid school year' });
+      }
+      activeYear = yearResult[0];
+    } else {
+      // Use active school year
+      activeYear = await getActiveSchoolYear();
+    }
+
+    // Get total students for the school year
     const [totalStudentsResult] = await pool.execute(
-      'SELECT COUNT(*) as total FROM studentrecord'
+      'SELECT COUNT(*) as total FROM studentrecord WHERE SchoolYearID = ?',
+      [activeYear.schoolYearId]
     );
     const totalStudents = totalStudentsResult[0].total;
 
-    // Get enrollment stats
+    // Get enrollment stats for the school year
     const [enrollmentStats] = await pool.execute(`
       SELECT 
         COUNT(*) as total,
@@ -64,9 +85,10 @@ router.get('/overview', authenticateToken, requireRole(['registrar', 'admin']), 
         SUM(CASE WHEN EnrollmentStatus = 'approved' THEN 1 ELSE 0 END) as approved,
         SUM(CASE WHEN EnrollmentStatus = 'declined' THEN 1 ELSE 0 END) as declined
       FROM studentrecord
-    `);
+      WHERE SchoolYearID = ?
+    `, [activeYear.schoolYearId]);
 
-    // Get attendance rate (simplified calculation)
+    // Get attendance rate for the school year
     const [attendanceResult] = await pool.execute(`
       SELECT 
         COUNT(DISTINCT al.StudentID) as students_with_attendance,
@@ -74,14 +96,15 @@ router.get('/overview', authenticateToken, requireRole(['registrar', 'admin']), 
       FROM studentrecord sr
       LEFT JOIN attendancelog al ON sr.StudentID = al.StudentID 
         AND al.Date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      WHERE sr.EnrollmentStatus = 'enrolled'
-    `);
+        AND al.SchoolYearID = ?
+      WHERE sr.EnrollmentStatus = 'enrolled' AND sr.SchoolYearID = ?
+    `, [activeYear.schoolYearId, activeYear.schoolYearId]);
 
     const attendanceRate = attendanceResult[0].total_students > 0 
       ? Math.round((attendanceResult[0].students_with_attendance / attendanceResult[0].total_students) * 100)
       : 0;
 
-    // Get recent activity (simplified since no CreatedAt column)
+    // Get recent activity for the school year
     const [recentActivity] = await pool.execute(`
       SELECT 
         'enrollment' as type,
@@ -89,9 +112,10 @@ router.get('/overview', authenticateToken, requireRole(['registrar', 'admin']), 
         NOW() as timestamp,
         'success' as status
       FROM studentrecord sr
+      WHERE sr.SchoolYearID = ?
       ORDER BY sr.StudentID DESC
       LIMIT 5
-    `);
+    `, [activeYear.schoolYearId]);
 
     res.json({
       totalStudents,
@@ -99,6 +123,10 @@ router.get('/overview', authenticateToken, requireRole(['registrar', 'admin']), 
       approvedEnrollments: enrollmentStats[0].approved,
       declinedEnrollments: enrollmentStats[0].declined,
       attendanceRate,
+      schoolYear: {
+        schoolYearId: activeYear.schoolYearId,
+        yearLabel: activeYear.yearLabel
+      },
       recentActivity: recentActivity.map(activity => ({
         id: Math.random().toString(36).substr(2, 9),
         type: activity.type,
@@ -118,23 +146,37 @@ router.get('/overview', authenticateToken, requireRole(['registrar', 'admin']), 
 // Get enrollments with filtering and pagination
 router.get('/enrollments', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
   try {
-    const { status = 'all', page = 1, limit = 10, search = '' } = req.query;
+    const { status = 'all', page = 1, limit = 10, search = '', schoolYearId } = req.query;
     // Sanitize pagination numbers and inline for LIMIT/OFFSET to avoid MySQL param issues
     const pageNum = Math.max(1, parseInt(String(page)) || 1);
     const limitNum = Math.max(1, Math.min(100, parseInt(String(limit)) || 10));
     const offsetNum = (pageNum - 1) * limitNum;
 
-    let whereClause = '';
-    let params = [];
+    // Get school year filter (default to active year)
+    let activeYear;
+    if (schoolYearId) {
+      const [yearResult] = await pool.execute(
+        'SELECT SchoolYearID as schoolYearId, YearLabel as yearLabel FROM schoolyear WHERE SchoolYearID = ?',
+        [schoolYearId]
+      );
+      if (yearResult.length === 0) {
+        return res.status(400).json({ success: false, message: 'Invalid school year' });
+      }
+      activeYear = yearResult[0];
+    } else {
+      activeYear = await getActiveSchoolYear();
+    }
+
+    let whereClause = 'WHERE sr.SchoolYearID = ?';
+    let params = [activeYear.schoolYearId];
 
     if (status !== 'all') {
-      whereClause = 'WHERE sr.EnrollmentStatus = ?';
+      whereClause += ' AND sr.EnrollmentStatus = ?';
       params.push(status);
     }
 
     if (search) {
-      const searchCondition = `AND (sr.FullName LIKE ? OR p.FullName LIKE ? OR sr.GradeLevel LIKE ?)`;
-      whereClause += whereClause ? ` ${searchCondition}` : `WHERE ${searchCondition}`;
+      whereClause += ' AND (sr.FullName LIKE ? OR p.FullName LIKE ? OR sr.GradeLevel LIKE ?)';
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
@@ -204,6 +246,10 @@ router.get('/enrollments', authenticateToken, requireRole(['registrar', 'admin']
         limit: limitNum,
         total,
         pages
+      },
+      schoolYear: {
+        schoolYearId: activeYear.schoolYearId,
+        yearLabel: activeYear.yearLabel
       }
     });
   } catch (error) {
@@ -282,6 +328,9 @@ router.post('/enrollments/:id/approve', authenticateToken, requireRole(['registr
     const { id } = req.params;
     const { notes = null, sectionId = null, scheduleIds = [] } = req.body;
 
+    // Get active school year
+    const activeYear = await getActiveSchoolYear();
+
     const connection = await pool.getConnection();
     
     try {
@@ -290,13 +339,13 @@ router.post('/enrollments/:id/approve', authenticateToken, requireRole(['registr
       // Update student enrollment status and set status to Active (and optional section assignment)
       if (sectionId) {
         await connection.execute(
-          'UPDATE studentrecord SET EnrollmentStatus = ?, Status = ?, EnrollmentDate = NOW(), SectionID = ? WHERE StudentID = ?',
-          ['approved', 'Active', sectionId, id]
+          'UPDATE studentrecord SET EnrollmentStatus = ?, Status = ?, EnrollmentDate = NOW(), SectionID = ?, SchoolYearID = ? WHERE StudentID = ?',
+          ['approved', 'Active', sectionId, activeYear.schoolYearId, id]
         );
       } else {
         await connection.execute(
-          'UPDATE studentrecord SET EnrollmentStatus = ?, Status = ?, EnrollmentDate = NOW() WHERE StudentID = ?',
-          ['approved', 'Active', id]
+          'UPDATE studentrecord SET EnrollmentStatus = ?, Status = ?, EnrollmentDate = NOW(), SchoolYearID = ? WHERE StudentID = ?',
+          ['approved', 'Active', activeYear.schoolYearId, id]
         );
       }
 
@@ -319,8 +368,8 @@ router.post('/enrollments/:id/approve', authenticateToken, requireRole(['registr
         );
         
         await connection.execute(
-          'INSERT INTO enrollment_review (StudentID, SubmittedByUserID, Status, ReviewDate, Notes, ReviewedByUserID) VALUES (?, ?, ?, NOW(), ?, ?)',
-          [id, student[0].CreatedBy, 'approved', notes, req.user.userId]
+          'INSERT INTO enrollment_review (StudentID, SubmittedByUserID, Status, ReviewDate, Notes, ReviewedByUserID, SchoolYearID) VALUES (?, ?, ?, NOW(), ?, ?, ?)',
+          [id, student[0].CreatedBy, 'approved', notes, req.user.userId, activeYear.schoolYearId]
         );
       }
 
@@ -466,10 +515,25 @@ router.post('/enrollments/:id/decline', authenticateToken, requireRole(['registr
 // Get students with filtering
 router.get('/students', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
   try {
-    const { search = '', gradeLevel = '', status = '' } = req.query;
+    const { search = '', gradeLevel = '', status = '', schoolYearId } = req.query;
 
-    let whereClause = 'WHERE 1=1';
-    let params = [];
+    // Get school year filter (default to active year)
+    let activeYear;
+    if (schoolYearId) {
+      const [yearResult] = await pool.execute(
+        'SELECT SchoolYearID as schoolYearId, YearLabel as yearLabel FROM schoolyear WHERE SchoolYearID = ?',
+        [schoolYearId]
+      );
+      if (yearResult.length === 0) {
+        return res.status(400).json({ success: false, message: 'Invalid school year' });
+      }
+      activeYear = yearResult[0];
+    } else {
+      activeYear = await getActiveSchoolYear();
+    }
+
+    let whereClause = 'WHERE sr.SchoolYearID = ?';
+    let params = [activeYear.schoolYearId];
 
     if (search) {
       whereClause += ' AND (sr.FullName LIKE ? OR p.FullName LIKE ? OR sr.GradeLevel LIKE ?)';
@@ -518,7 +582,11 @@ router.get('/students', authenticateToken, requireRole(['registrar', 'admin']), 
         ...student,
         enrollmentDate: student.enrollmentDate ? new Date(student.enrollmentDate).toISOString() : null,
         lastModified: new Date(student.lastModified).toISOString()
-      }))
+      })),
+      schoolYear: {
+        schoolYearId: activeYear.schoolYearId,
+        yearLabel: activeYear.yearLabel
+      }
     });
   } catch (error) {
     console.error('Get students error:', error);
@@ -600,6 +668,23 @@ router.put('/students/:id', authenticateToken, requireRole(['registrar', 'admin'
 // Get sections
 router.get('/sections', authenticateToken, requireRole(['registrar', 'admin']), async (req, res) => {
   try {
+    const { schoolYearId } = req.query;
+    
+    // Get school year filter (default to active year)
+    let activeYear;
+    if (schoolYearId) {
+      const [yearResult] = await pool.execute(
+        'SELECT SchoolYearID as schoolYearId, YearLabel as yearLabel FROM schoolyear WHERE SchoolYearID = ?',
+        [schoolYearId]
+      );
+      if (yearResult.length === 0) {
+        return res.status(400).json({ success: false, message: 'Invalid school year' });
+      }
+      activeYear = yearResult[0];
+    } else {
+      activeYear = await getActiveSchoolYear();
+    }
+
     const [sections] = await pool.execute(`
       SELECT 
         s.SectionID as id,
@@ -608,16 +693,23 @@ router.get('/sections', authenticateToken, requireRole(['registrar', 'admin']), 
         s.Capacity as capacity,
         COUNT(sr.StudentID) as currentEnrollment
       FROM section s
-  LEFT JOIN studentrecord sr ON s.SectionID = sr.SectionID AND sr.EnrollmentStatus IN ('approved','enrolled')
+      LEFT JOIN studentrecord sr ON s.SectionID = sr.SectionID 
+        AND sr.EnrollmentStatus IN ('approved','enrolled')
+        AND sr.SchoolYearID = ?
+      WHERE s.SchoolYearID = ?
       GROUP BY s.SectionID, s.SectionName, s.GradeLevel, s.Capacity
       ORDER BY s.GradeLevel, s.SectionName
-    `);
+    `, [activeYear.schoolYearId, activeYear.schoolYearId]);
 
     res.json({
       data: sections.map(section => ({
         ...section,
         currentEnrollment: parseInt(section.currentEnrollment)
-      }))
+      })),
+      schoolYear: {
+        schoolYearId: activeYear.schoolYearId,
+        yearLabel: activeYear.yearLabel
+      }
     });
   } catch (error) {
     console.error('Get sections error:', error);

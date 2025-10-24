@@ -1,3 +1,5 @@
+import { SchoolYear } from '../../types';
+
 export interface AdminUser {
 	id: number;
 	email: string;
@@ -831,5 +833,76 @@ export const AdminService = {
 		if (!res.ok) throw new Error(data.message || 'Failed to remove schedule assignment');
 		return true;
 	},
+
+	// School Year Management
+	async getSchoolYears(): Promise<SchoolYear[]> {
+		const token = getToken();
+		if (!token) throw new Error('Not authenticated');
+		const res = await fetch(`${API_BASE_URL}/admin/school-years`, {
+			headers: { 'Authorization': `Bearer ${token}` }
+		});
+		const data = await res.json();
+		if (!res.ok) throw new Error(data.message || 'Failed to fetch school years');
+		return data.data as SchoolYear[];
+	},
+
+	async getActiveSchoolYear(): Promise<SchoolYear> {
+		const token = getToken();
+		if (!token) throw new Error('Not authenticated');
+		const res = await fetch(`${API_BASE_URL}/admin/school-years/active`, {
+			headers: { 'Authorization': `Bearer ${token}` }
+		});
+		const data = await res.json();
+		if (!res.ok) throw new Error(data.message || 'Failed to fetch active school year');
+		return data.data as SchoolYear;
+	},
+
+	async createSchoolYear(data: Partial<SchoolYear>): Promise<SchoolYear> {
+		const token = getToken();
+		if (!token) throw new Error('Not authenticated');
+		const res = await fetch(`${API_BASE_URL}/admin/school-years`, {
+			method: 'POST',
+			headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+			body: JSON.stringify(data)
+		});
+		const responseData = await res.json();
+		if (!res.ok) throw new Error(responseData.message || 'Failed to create school year');
+		return responseData.data as SchoolYear;
+	},
+
+	async updateSchoolYear(id: number, data: Partial<SchoolYear>): Promise<SchoolYear> {
+		const token = getToken();
+		if (!token) throw new Error('Not authenticated');
+		const res = await fetch(`${API_BASE_URL}/admin/school-years/${id}`, {
+			method: 'PUT',
+			headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+			body: JSON.stringify(data)
+		});
+		const responseData = await res.json();
+		if (!res.ok) throw new Error(responseData.message || 'Failed to update school year');
+		return responseData.data as SchoolYear;
+	},
+
+	async activateSchoolYear(id: number): Promise<void> {
+		const token = getToken();
+		if (!token) throw new Error('Not authenticated');
+		const res = await fetch(`${API_BASE_URL}/admin/school-years/${id}/activate`, {
+			method: 'POST',
+			headers: { 'Authorization': `Bearer ${token}` }
+		});
+		const data = await res.json();
+		if (!res.ok) throw new Error(data.message || 'Failed to activate school year');
+	},
+
+	async deleteSchoolYear(id: number): Promise<void> {
+		const token = getToken();
+		if (!token) throw new Error('Not authenticated');
+		const res = await fetch(`${API_BASE_URL}/admin/school-years/${id}`, {
+			method: 'DELETE',
+			headers: { 'Authorization': `Bearer ${token}` }
+		});
+		const data = await res.json();
+		if (!res.ok) throw new Error(data.message || 'Failed to delete school year');
+	}
 
 }; 

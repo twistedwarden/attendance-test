@@ -1,13 +1,18 @@
 import { Menu, Bell, User, LogOut } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import NotificationBell from '../shared/NotificationBell';
+import { SchoolYearBadge } from '../shared/SchoolYearBadge';
+import { SchoolYear } from '../../types';
 
 interface TeacherHeaderProps {
   onMobileMenuToggle: () => void;
+  activeYear?: SchoolYear | null;
 }
 
-export default function TeacherHeader({ onMobileMenuToggle }: TeacherHeaderProps) {
+export default function TeacherHeader({ onMobileMenuToggle, activeYear }: TeacherHeaderProps) {
   const { user, logout } = useAuth();
+  
+  console.log('TeacherHeader - Received activeYear:', activeYear);
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
@@ -23,9 +28,22 @@ export default function TeacherHeader({ onMobileMenuToggle }: TeacherHeaderProps
         {/* Title */}
         <div className="hidden lg:block">
           <h1 className="text-2xl font-bold text-gray-900">Teacher Dashboard</h1>
-          <p className="text-sm text-gray-600">
-            {user?.gradeLevel} - Section {user?.section}
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-gray-600">
+              {user?.gradeLevel} - Section {user?.section}
+            </p>
+            {activeYear ? (
+              <SchoolYearBadge 
+                yearLabel={activeYear.yearLabel} 
+                isActive={activeYear.isActive} 
+                size="sm"
+              />
+            ) : (
+              <div className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">
+                Loading...
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right side actions */}

@@ -113,6 +113,19 @@ export const ParentService = {
     if (!res.ok) throw new Error(data.message || 'Failed to fetch enrollment setting');
     return Boolean(data?.data?.enabled);
   },
+
+  // Get active school year
+  async getActiveSchoolYear(): Promise<any> {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const res = await fetch(`${API_BASE_URL}/parent/active-school-year`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch active school year');
+    return data.data;
+  },
   // Get parent profile data
   async getParentProfile(): Promise<Parent> {
     const token = getToken();

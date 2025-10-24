@@ -11,7 +11,10 @@ import NoStudentsMessage from './components/NoStudentsMessage';
 import StudentEnrollmentForm from './components/StudentEnrollmentForm';
 import { ExcuseLetterSection } from './components/ExcuseLetterSection';
 import { FollowUpDocumentsSection } from './components/FollowUpDocumentsSection';
+import { SchoolYearBadge } from '../shared/SchoolYearBadge';
+import { SchoolYear } from '../../types';
 import { ParentService, Parent, Student } from './api/parentService';
+import { SchoolYearService } from '../shared/schoolYearService';
 import './parent.css';
 
 const ParentDashboard = () => {
@@ -22,6 +25,7 @@ const ParentDashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [showEnrollmentModal, setShowEnrollmentModal] = useState(false);
   const [enrollmentEnabled, setEnrollmentEnabled] = useState<boolean>(true);
+  const [activeYear, setActiveYear] = useState<SchoolYear | null>(null);
 
   useEffect(() => {
     loadParentData();
@@ -32,16 +36,23 @@ const ParentDashboard = () => {
       setIsLoading(true);
       setError(null);
       
-      // Load parent profile, students, and enrollment toggle in parallel
-      const [parentData, studentsData, enabled] = await Promise.all([
+      // Load parent profile, students, enrollment toggle, and active school year in parallel
+      const [parentData, studentsData, enabled, yearData] = await Promise.all([
         ParentService.getParentProfile(),
         ParentService.getParentStudents(),
-        ParentService.getEnrollmentEnabled().catch(() => true)
+        ParentService.getEnrollmentEnabled().catch(() => true),
+        SchoolYearService.getActiveSchoolYear().catch((error) => {
+          console.error('Failed to load active school year:', error);
+          return null;
+        })
       ]);
+      
+      console.log('ParentDashboard - Active year loaded:', yearData);
       
       setParent(parentData);
       setStudents(studentsData);
       setEnrollmentEnabled(Boolean(enabled));
+      setActiveYear(yearData);
       
       // Set first student as selected if available
       if (studentsData.length > 0) {
@@ -124,6 +135,7 @@ const ParentDashboard = () => {
               parent={parent}
               onEnrollNewStudent={handleEnrollNewStudent}
               enrollmentEnabled={enrollmentEnabled}
+              activeYear={activeYear}
             />
           }
         >

@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Menu, Bell, LogOut } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import LogoutModal from './components/LogoutModal';
 import NotificationBell from '../shared/NotificationBell';
+import { SchoolYearBadge } from '../shared/SchoolYearBadge';
+import { SchoolYear } from '../../types';
+import { SchoolYearService } from '../shared/schoolYearService';
 
 interface RegistrarHeaderProps {
   onMobileMenuToggle: () => void;
@@ -11,6 +14,7 @@ interface RegistrarHeaderProps {
 export default function RegistrarHeader({ onMobileMenuToggle }: RegistrarHeaderProps) {
   const { user, logout } = useAuth();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [activeYear, setActiveYear] = useState<SchoolYear | null>(null);
 
   const handleLogoutClick = () => {
     setShowLogoutModal(true);
@@ -25,6 +29,21 @@ export default function RegistrarHeader({ onMobileMenuToggle }: RegistrarHeaderP
     setShowLogoutModal(false);
   };
 
+  useEffect(() => {
+    const loadActiveYear = async () => {
+      try {
+        console.log('RegistrarHeader - Loading active school year...');
+        const year = await SchoolYearService.getActiveSchoolYear();
+        console.log('RegistrarHeader - Active year loaded:', year);
+        setActiveYear(year);
+      } catch (error) {
+        console.error('RegistrarHeader - Failed to load active school year:', error);
+      }
+    };
+
+    loadActiveYear();
+  }, []);
+
   return (
     <header className="bg-white shadow-sm border-b border-gray-200 px-4 lg:px-6 py-4 sticky top-0 z-40">
       <div className="flex items-center justify-between">
@@ -38,7 +57,16 @@ export default function RegistrarHeader({ onMobileMenuToggle }: RegistrarHeaderP
           </button>
           
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Registrar Portal</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-semibold text-gray-900">Registrar Portal</h1>
+              {activeYear && (
+                <SchoolYearBadge 
+                  yearLabel={activeYear.yearLabel} 
+                  isActive={activeYear.isActive} 
+                  size="sm"
+                />
+              )}
+            </div>
             <p className="text-sm text-gray-500">Foothills Christian School</p>
           </div>
         </div>

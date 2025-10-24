@@ -23,6 +23,43 @@ import { sendEmail } from '../config/email.js';
 
 const router = express.Router();
 
+// Universal endpoint for getting active school year (accessible by all authenticated users)
+router.get('/active-school-year', authenticateToken, async (req, res) => {
+  try {
+    const [activeYear] = await pool.execute(`
+      SELECT 
+        SchoolYearID as schoolYearId,
+        YearLabel as yearLabel,
+        StartDate as startDate,
+        EndDate as endDate,
+        IsActive as isActive,
+        CreatedAt as createdAt,
+        UpdatedAt as updatedAt
+      FROM schoolyear 
+      WHERE IsActive = TRUE 
+      LIMIT 1
+    `);
+
+    if (activeYear.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No active school year found' 
+      });
+    }
+
+    return res.json({ 
+      success: true, 
+      data: activeYear[0] 
+    });
+  } catch (error) {
+    console.error('Get active school year error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error' 
+    });
+  }
+});
+
 // Helper: resolve display name from role-specific tables
 const getDisplayName = async (userId, role) => {
   try {

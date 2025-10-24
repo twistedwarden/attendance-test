@@ -65,6 +65,16 @@ export interface Section {
   updatedAt: string;
 }
 
+export interface SchoolYear {
+  schoolYearId: number;
+  yearLabel: string;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Student {
   id: number;
   fullName: string;
@@ -84,6 +94,8 @@ export interface Student {
   placeOfBirth?: string;
   nationality?: string;
   address?: string;
+  schoolYearId?: number;
+  schoolYear?: string;
 }
 
 export interface TeacherSchedule {
@@ -101,6 +113,7 @@ export interface TeacherSchedule {
   dayOfWeek: string;
   gracePeriod: number;
   isActive: boolean;
+  schoolYearId?: number;
 }
 
 // Excuse Letter interfaces

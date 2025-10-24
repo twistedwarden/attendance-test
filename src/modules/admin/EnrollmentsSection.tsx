@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search, Eye, Check, X, FileText, User, Calendar, Phone, Download } from 'lucide-react';
 import { AdminService } from './api/adminService';
 import Modal from './components/Modal';
+import { SchoolYearSelector } from '../shared/SchoolYearSelector';
+import { SchoolYear } from '../../types';
 // import ConfirmModal from './components/ConfirmModal';
 import { toast } from 'sonner';
 
@@ -48,6 +50,11 @@ export default function EnrollmentsSection() {
   const [confirmToggleOpen, setConfirmToggleOpen] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [pendingToggleValue, setPendingToggleValue] = useState<boolean | null>(null);
+  
+  // School year state
+  const [schoolYears, setSchoolYears] = useState<SchoolYear[]>([]);
+  const [selectedYearId, setSelectedYearId] = useState<number | null>(null);
+  const [activeYear, setActiveYear] = useState<SchoolYear | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -103,6 +110,22 @@ export default function EnrollmentsSection() {
   const [sections, setSections] = useState<any[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
 
+  const loadSchoolYears = async () => {
+    try {
+      const years = await AdminService.getSchoolYears();
+      setSchoolYears(years);
+      
+      // Set active year as default
+      const active = years.find(year => year.isActive);
+      if (active) {
+        setActiveYear(active);
+        setSelectedYearId(active.schoolYearId);
+      }
+    } catch (e: any) {
+      console.error('Failed to load school years:', e);
+    }
+  };
+
   const loadEnrollments = async (page = 1, status = statusFilter) => {
     try {
       setLoading(true);
@@ -110,7 +133,8 @@ export default function EnrollmentsSection() {
       const response = await AdminService.getEnrollments({ 
         status: status === 'all' ? undefined : status, 
         page, 
-        limit: 10 
+        limit: 10,
+        schoolYearId: selectedYearId || undefined
       });
       setEnrollments(response.data || []);
       setTotalPages(response.pagination?.pages || 1);
@@ -132,15 +156,24 @@ export default function EnrollmentsSection() {
   };
 
   useEffect(() => {
-    loadEnrollments();
-    loadStats();
-    loadSchedules();
+    loadSchoolYears();
     (async () => {
       try {
         const enabled = await AdminService.getEnrollmentEnabled();
         setEnrollmentEnabled(Boolean(enabled));
       } catch {}
     })();
+  }, []);
+
+  useEffect(() => {
+    if (selectedYearId) {
+      loadEnrollments();
+      loadStats();
+    }
+  }, [selectedYearId]);
+
+  useEffect(() => {
+    loadSchedules();
   }, []);
 
   // Load sections filtered by the enrollee's grade level when Approve modal opens
@@ -330,6 +363,17 @@ export default function EnrollmentsSection() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <p className="text-gray-600">Review and manage student enrollment applications</p>
           <div className="flex items-center gap-3">
+            {schoolYears.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-700">School Year:</span>
+                <SchoolYearSelector
+                  schoolYears={schoolYears}
+                  selectedYearId={selectedYearId || 0}
+                  onChange={setSelectedYearId}
+                  className="w-48"
+                />
+              </div>
+            )}
             <span className="text-sm text-gray-700">Enrollment</span>
             <label className="relative inline-flex items-center cursor-pointer">
               <input

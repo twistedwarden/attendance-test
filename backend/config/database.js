@@ -1113,10 +1113,16 @@ export const getStudents = async () => {
 
 export const createStudent = async ({ fullName, dateOfBirth, gender, placeOfBirth, nationality, address, gradeLevel = null, sectionId = null, parentId = null, createdBy }) => {
   try {
+    // Get active school year
+    const [activeYearResult] = await pool.execute(
+      'SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1'
+    );
+    const activeSchoolYearId = activeYearResult.length > 0 ? activeYearResult[0].SchoolYearID : null;
+
     // Discover columns
     const dbName = process.env.DB_NAME || 'attendance';
     const [cols] = await pool.execute(
-      'SELECT COLUMN_NAME, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME IN ("FingerprintTemplate","CreatedBy","ParentID","ParentContact","EnrollmentDate","EnrollmentStatus")',
+      'SELECT COLUMN_NAME, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME IN ("FingerprintTemplate","CreatedBy","ParentID","ParentContact","EnrollmentDate","EnrollmentStatus","SchoolYearID")',
       [dbName, 'studentrecord']
     );
     const hasFingerprint = cols.some(c => c.COLUMN_NAME === 'FingerprintTemplate');
@@ -1146,6 +1152,13 @@ export const createStudent = async ({ fullName, dateOfBirth, gender, placeOfBirt
     if (hasEnrollmentStatus) {
       columns.push('EnrollmentStatus');
       values.push('pending');
+    }
+
+    // Add SchoolYearID if column exists
+    const hasSchoolYearId = cols.some(c => c.COLUMN_NAME === 'SchoolYearID');
+    if (hasSchoolYearId && activeSchoolYearId) {
+      columns.push('SchoolYearID');
+      values.push(activeSchoolYearId);
     }
 
     if (hasFingerprint) {

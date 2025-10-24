@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 import { pool, storeEnrollmentDocuments, getSystemSetting } from '../config/database.js';
+import { getActiveSchoolYear } from '../middleware/validation.js';
 
 const router = express.Router();
 // ===== System Settings (read-only for parents) =====
@@ -11,6 +12,43 @@ router.get('/settings/enrollment', authenticateToken, requireRole(['parent']), a
     return res.json({ success: true, data: { enabled: String(val).toLowerCase() === 'true' } });
   } catch (e) {
     return res.status(500).json({ success: false, message: 'Failed to fetch enrollment setting' });
+  }
+});
+
+// Get active school year (for enrollment form)
+router.get('/active-school-year', authenticateToken, requireRole(['parent']), async (req, res) => {
+  try {
+    const [activeYear] = await pool.execute(`
+      SELECT 
+        SchoolYearID as schoolYearId,
+        YearLabel as yearLabel,
+        StartDate as startDate,
+        EndDate as endDate,
+        IsActive as isActive,
+        CreatedAt as createdAt,
+        UpdatedAt as updatedAt
+      FROM schoolyear 
+      WHERE IsActive = TRUE 
+      LIMIT 1
+    `);
+
+    if (activeYear.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No active school year found' 
+      });
+    }
+
+    return res.json({ 
+      success: true, 
+      data: activeYear[0] 
+    });
+  } catch (error) {
+    console.error('Get active school year error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error' 
+    });
   }
 });
 
@@ -59,6 +97,9 @@ router.get('/students', authenticateToken, requireRole(['parent']), async (req, 
       return res.status(404).json({ success: false, message: 'Parent profile not found' });
     }
 
+    // Get active school year
+    const activeYear = await getActiveSchoolYear();
+
     const [rows] = await pool.execute(
       `SELECT s.StudentID, s.FullName, s.GradeLevel, s.SectionID, s.ParentID, s.Status, s.EnrollmentStatus,
               sec.SectionName, sec.Description as SectionDescription
@@ -66,8 +107,9 @@ router.get('/students', authenticateToken, requireRole(['parent']), async (req, 
        LEFT JOIN section sec ON sec.SectionID = s.SectionID
        WHERE s.ParentID = ?
          AND (s.EnrollmentStatus IS NULL OR s.EnrollmentStatus <> 'declined')
+         AND s.SchoolYearID = ?
        ORDER BY s.StudentID`,
-      [parentId]
+      [parentId, activeYear.schoolYearId]
     );
 
     const students = rows.map(student => ({
@@ -81,7 +123,14 @@ router.get('/students', authenticateToken, requireRole(['parent']), async (req, 
       enrollmentStatus: student.EnrollmentStatus
     }));
 
-    return res.json({ success: true, data: students });
+    return res.json({ 
+      success: true, 
+      data: students,
+      schoolYear: {
+        schoolYearId: activeYear.schoolYearId,
+        yearLabel: activeYear.yearLabel
+      }
+    });
   } catch (error) {
     console.error('Get parent students error:', error);
     return res.status(500).json({ success: false, message: 'Internal server error' });
