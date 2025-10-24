@@ -471,8 +471,8 @@ router.post('/enrollments/:id/decline', authenticateToken, requireRole(['registr
         );
         
         await connection.execute(
-          'INSERT INTO enrollment_review (StudentID, SubmittedByUserID, Status, ReviewDate, DeclineReason, Notes, ReviewedByUserID) VALUES (?, ?, ?, NOW(), ?, ?, ?)',
-          [id, student[0].CreatedBy, 'declined', reason, notes, req.user.userId]
+          'INSERT INTO enrollment_review (StudentID, SubmittedByUserID, Status, ReviewDate, DeclineReason, Notes, ReviewedByUserID, SchoolYearID) VALUES (?, ?, ?, NOW(), ?, ?, ?, ?)',
+          [id, student[0].CreatedBy, 'declined', reason, notes, req.user.userId, activeYear.schoolYearId]
         );
       }
 

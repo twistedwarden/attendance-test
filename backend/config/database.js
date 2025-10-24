@@ -325,8 +325,14 @@ export const getAttendanceReports = async ({ limit = 50, offset = 0 } = {}) => {
 
 export const createAttendanceReport = async ({ generatedBy, studentId = null, scheduleId = null, dateRangeStart, dateRangeEnd, reportType, reportFile = null }) => {
   try {
-    // Support both schemas: with or without StudentID/ScheduleID
-    let sql = 'INSERT INTO attendancereport (GeneratedBy, DateRangeStart, DateRangeEnd, ReportType, ReportFile) VALUES (?, ?, ?, ?, ?)';
+    // Get active school year
+    const [activeYearResult] = await pool.execute(
+      'SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1'
+    );
+    const activeSchoolYearId = activeYearResult.length > 0 ? activeYearResult[0].SchoolYearID : null;
+
+    // Support both schemas: with or without StudentID/ScheduleID/SchoolYearID
+    let sql = 'INSERT INTO attendancereport (GeneratedBy, DateRangeStart, DateRangeEnd, ReportType, ReportFile)';
     let params = [generatedBy, dateRangeStart, dateRangeEnd, reportType, reportFile];
 
     // Detect legacy columns and insert accordingly
@@ -335,9 +341,28 @@ export const createAttendanceReport = async ({ generatedBy, studentId = null, sc
     );
     const hasStudent = Array.isArray(cols) && cols.some(c => c.COLUMN_NAME === 'StudentID');
     const hasSchedule = Array.isArray(cols) && cols.some(c => c.COLUMN_NAME === 'ScheduleID');
-    if (hasStudent || hasSchedule) {
-      sql = 'INSERT INTO attendancereport (GeneratedBy, StudentID, ScheduleID, DateRangeStart, DateRangeEnd, ReportType, ReportFile) VALUES (?, ?, ?, ?, ?, ?, ?)';
-      params = [generatedBy, studentId, scheduleId, dateRangeStart, dateRangeEnd, reportType, reportFile];
+    const hasSchoolYear = Array.isArray(cols) && cols.some(c => c.COLUMN_NAME === 'SchoolYearID');
+    
+    if (hasStudent || hasSchedule || hasSchoolYear) {
+      const columns = ['GeneratedBy', 'DateRangeStart', 'DateRangeEnd', 'ReportType', 'ReportFile'];
+      const values = [generatedBy, dateRangeStart, dateRangeEnd, reportType, reportFile];
+      
+      if (hasStudent) {
+        columns.push('StudentID');
+        values.push(studentId);
+      }
+      if (hasSchedule) {
+        columns.push('ScheduleID');
+        values.push(scheduleId);
+      }
+      if (hasSchoolYear && activeSchoolYearId) {
+        columns.push('SchoolYearID');
+        values.push(activeSchoolYearId);
+      }
+      
+      const placeholders = columns.map(() => '?').join(', ');
+      sql = `INSERT INTO attendancereport (${columns.join(', ')}) VALUES (${placeholders})`;
+      params = values;
     }
 
     const [result] = await pool.execute(sql, params);
@@ -403,9 +428,19 @@ export const getStudentSubjects = async (studentId) => {
 // Create subject attendance entry
 export const createSubjectAttendance = async ({ studentId, subjectId, date, status = 'Present', validatedBy = null, timeIn = null }) => {
   try {
+    // Get active school year
+    const [activeYearResult] = await pool.execute(
+      'SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1'
+    );
+    const activeSchoolYearId = activeYearResult.length > 0 ? activeYearResult[0].SchoolYearID : null;
+
+    if (!activeSchoolYearId) {
+      throw new Error('No active school year found');
+    }
+
     const [result] = await pool.execute(
-      'INSERT INTO subjectattendance (StudentID, SubjectID, Date, Status, ValidatedBy, CreatedAt) VALUES (?, ?, ?, ?, ?, ?)',
-      [studentId, subjectId, date, status, validatedBy, timeIn ? `${date} ${timeIn}` : null]
+      'INSERT INTO subjectattendance (StudentID, SubjectID, Date, Status, ValidatedBy, CreatedAt, SchoolYearID) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [studentId, subjectId, date, status, validatedBy, timeIn ? `${date} ${timeIn}` : null, activeSchoolYearId]
     );
     return result.insertId;
   } catch (error) {
@@ -671,10 +706,20 @@ export const createManualAttendance = async ({ studentId, date = null, timeIn = 
       // If no open row exists, fall through to insert a new row with only TimeOut
     }
 
+    // Get active school year
+    const [activeYearResult] = await pool.execute(
+      'SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1'
+    );
+    const activeSchoolYearId = activeYearResult.length > 0 ? activeYearResult[0].SchoolYearID : null;
+
+    if (!activeSchoolYearId) {
+      throw new Error('No active school year found');
+    }
+
     // Create attendance log entry (without status)
     const [result] = await pool.execute(
-      'INSERT INTO attendancelog (StudentID, Date, TimeIn, TimeOut, ValidatedBy) VALUES (?, ?, ?, ?, ?)',
-      [studentId, finalDate, timeIn, timeOut, validatedBy]
+      'INSERT INTO attendancelog (StudentID, Date, TimeIn, TimeOut, ValidatedBy, SchoolYearID) VALUES (?, ?, ?, ?, ?, ?)',
+      [studentId, finalDate, timeIn, timeOut, validatedBy, activeSchoolYearId]
     );
 
     // Get all schedules for this student
@@ -812,9 +857,19 @@ export const getSections = async (gradeLevel = null, isActive = true) => {
 
 export const createSection = async ({ sectionName, gradeLevel, description = null, capacity = null, isActive = true }) => {
   try {
+    // Get active school year
+    const [activeYearResult] = await pool.execute(
+      'SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1'
+    );
+    const activeSchoolYearId = activeYearResult.length > 0 ? activeYearResult[0].SchoolYearID : null;
+
+    if (!activeSchoolYearId) {
+      throw new Error('No active school year found');
+    }
+
     const [result] = await pool.execute(
-      'INSERT INTO section (SectionName, GradeLevel, Description, Capacity, IsActive) VALUES (?, ?, ?, ?, ?)',
-      [sectionName, gradeLevel, description, capacity, isActive]
+      'INSERT INTO section (SectionName, GradeLevel, Description, Capacity, IsActive, SchoolYearID) VALUES (?, ?, ?, ?, ?, ?)',
+      [sectionName, gradeLevel, description, capacity, isActive, activeSchoolYearId]
     );
     return result.insertId;
   } catch (error) {

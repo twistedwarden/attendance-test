@@ -1115,12 +1115,25 @@ router.post('/excuse-letters', async (req, res) => {
       });
     }
 
+    // Get active school year
+    const [activeYearResult] = await pool.execute(
+      'SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1'
+    );
+    const activeSchoolYearId = activeYearResult.length > 0 ? activeYearResult[0].SchoolYearID : null;
+
+    if (!activeSchoolYearId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No active school year found' 
+      });
+    }
+
     // Insert excuse letter using existing table structure
     const [result] = await pool.execute(
       `INSERT INTO excuseletter 
-       (StudentID, ParentID, DateFiled, Reason, AttachmentFile, Status) 
-       VALUES (?, ?, ?, ?, ?, 'Pending')`,
-      [studentId, parentId, dateFrom, reason, supportingDocumentPath || null]
+       (StudentID, ParentID, DateFiled, Reason, AttachmentFile, Status, SchoolYearID) 
+       VALUES (?, ?, ?, ?, ?, 'Pending', ?)`,
+      [studentId, parentId, dateFrom, reason, supportingDocumentPath || null, activeSchoolYearId]
     );
 
     const excuseLetterId = result.insertId;

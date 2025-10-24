@@ -1050,12 +1050,22 @@ router.post('/schedules', async (req, res) => {
             });
         }
 
+        // Get active school year
+        const [activeYearResult] = await pool.execute(
+            'SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1'
+        );
+        const activeSchoolYearId = activeYearResult.length > 0 ? activeYearResult[0].SchoolYearID : null;
+
+        if (!activeSchoolYearId) {
+            return res.status(400).json({ success: false, message: 'No active school year found' });
+        }
+
         // Insert into teacherschedule (create separate records for each day)
         const insertedIds = [];
         for (const dayOfWeek of days) {
             const [ins] = await pool.execute(
-                'INSERT INTO teacherschedule (TeacherID, SubjectID, SectionID, TimeIn, TimeOut, DayOfWeek, GracePeriod) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [teacherId, subjectId, sectionId, startTime, endTime, dayOfWeek, gracePeriod]
+                'INSERT INTO teacherschedule (TeacherID, SubjectID, SectionID, TimeIn, TimeOut, DayOfWeek, GracePeriod, SchoolYearID) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [teacherId, subjectId, sectionId, startTime, endTime, dayOfWeek, gracePeriod, activeSchoolYearId]
             );
             insertedIds.push(ins.insertId);
             
@@ -1253,12 +1263,22 @@ router.put('/schedules/:id', async (req, res) => {
                 // Delete the current record
                 await pool.execute('DELETE FROM teacherschedule WHERE ScheduleID = ?', [id]);
                 
+                // Get active school year
+                const [activeYearResult] = await pool.execute(
+                    'SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1'
+                );
+                const activeSchoolYearId = activeYearResult.length > 0 ? activeYearResult[0].SchoolYearID : null;
+
+                if (!activeSchoolYearId) {
+                    return res.status(400).json({ success: false, message: 'No active school year found' });
+                }
+
                 // Create new records for each day
                 const insertedIds = [];
                 for (const dayOfWeek of days) {
                     const [ins] = await pool.execute(
-                        'INSERT INTO teacherschedule (TeacherID, SubjectID, SectionID, TimeIn, TimeOut, DayOfWeek, GracePeriod) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                        [currentRecord.TeacherID, currentRecord.SubjectID, currentRecord.SectionID, currentRecord.TimeIn, currentRecord.TimeOut, dayOfWeek, currentRecord.GracePeriod || 15]
+                        'INSERT INTO teacherschedule (TeacherID, SubjectID, SectionID, TimeIn, TimeOut, DayOfWeek, GracePeriod, SchoolYearID) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                        [currentRecord.TeacherID, currentRecord.SubjectID, currentRecord.SectionID, currentRecord.TimeIn, currentRecord.TimeOut, dayOfWeek, currentRecord.GracePeriod || 15, activeSchoolYearId]
                     );
                     insertedIds.push(ins.insertId);
                     
@@ -2133,8 +2153,8 @@ router.post('/enrollments/:id/approve', async (req, res) => {
                 );
                 
                 await connection.execute(
-                    'INSERT INTO enrollment_review (StudentID, SubmittedByUserID, Status, ReviewDate, Notes, ReviewedByUserID) VALUES (?, ?, ?, NOW(), ?, ?)',
-                    [id, student[0].CreatedBy, 'approved', notes, req.user.userId]
+                    'INSERT INTO enrollment_review (StudentID, SubmittedByUserID, Status, ReviewDate, Notes, ReviewedByUserID, SchoolYearID) VALUES (?, ?, ?, NOW(), ?, ?, ?)',
+                    [id, student[0].CreatedBy, 'approved', notes, req.user.userId, activeYear.schoolYearId]
                 );
             }
 
@@ -2274,8 +2294,8 @@ router.post('/enrollments/:id/decline', async (req, res) => {
                 );
                 
                 await connection.execute(
-                    'INSERT INTO enrollment_review (StudentID, SubmittedByUserID, Status, ReviewDate, DeclineReason, Notes, ReviewedByUserID) VALUES (?, ?, ?, NOW(), ?, ?, ?)',
-                    [id, student[0].CreatedBy, 'declined', reason.trim(), notes, req.user.userId]
+                    'INSERT INTO enrollment_review (StudentID, SubmittedByUserID, Status, ReviewDate, DeclineReason, Notes, ReviewedByUserID, SchoolYearID) VALUES (?, ?, ?, NOW(), ?, ?, ?, ?)',
+                    [id, student[0].CreatedBy, 'declined', reason.trim(), notes, req.user.userId, activeYear.schoolYearId]
                 );
             }
 
