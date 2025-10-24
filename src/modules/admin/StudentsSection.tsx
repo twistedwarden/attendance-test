@@ -92,6 +92,36 @@ export default function StudentsSection() {
   }, [sectionOptionsFull, formGrade]);
   const [availableGrades, setAvailableGrades] = useState<string[]>([]);
   
+  // Predefined options for dropdowns
+  const gradeLevelOptions = ['1', '2', '3', '4', '5', '6', '7'];
+  const nationalityOptions = [
+    'Filipino',
+    'American',
+    'Chinese',
+    'Japanese',
+    'Korean',
+    'Indian',
+    'British',
+    'Australian',
+    'Canadian',
+    'German',
+    'French',
+    'Italian',
+    'Spanish',
+    'Russian',
+    'Brazilian',
+    'Mexican',
+    'Thai',
+    'Vietnamese',
+    'Indonesian',
+    'Malaysian',
+    'Singaporean',
+    'Other'
+  ];
+  
+  // State for "Other" text input
+  const [customNationality, setCustomNationality] = useState('');
+  
   // Archiving states
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
@@ -230,6 +260,7 @@ export default function StudentsSection() {
     setFormGender('');
     setFormPlaceOfBirth('');
     setFormNationality('');
+    setCustomNationality('');
     setFormAddress('');
     setFormAdditionalInfo('');
     setParentMode('none');
@@ -252,7 +283,7 @@ export default function StudentsSection() {
         dateOfBirth: formDateOfBirth || null,
         gender: formGender || null,
         placeOfBirth: formPlaceOfBirth || null,
-        nationality: formNationality || null,
+        nationality: formNationality === 'Other' ? customNationality : (formNationality || null),
         address: formAddress || null,
         additionalInfo: formAdditionalInfo || null
       });
@@ -279,6 +310,7 @@ export default function StudentsSection() {
     setFormGender('');
     setFormPlaceOfBirth('');
     setFormNationality('');
+    setCustomNationality('');
     setFormAddress('');
     setFormAdditionalInfo('');
     setParentMode('none'); setSelectedParentId(null); setParentQuery(''); setParentResults([]);
@@ -294,6 +326,7 @@ export default function StudentsSection() {
         setFormGender(details?.gender || '');
         setFormPlaceOfBirth(details?.placeOfBirth || '');
         setFormNationality(details?.nationality || '');
+        setCustomNationality('');
         setFormAddress(details?.address || '');
         setFormAdditionalInfo(details?.additionalInfo || '');
         // Prefer sectionId from details if available
@@ -349,7 +382,7 @@ export default function StudentsSection() {
         dateOfBirth: formDateOfBirth || null,
         gender: formGender || null,
         placeOfBirth: formPlaceOfBirth || null,
-        nationality: formNationality || null,
+        nationality: formNationality === 'Other' ? customNationality : (formNationality || null),
         address: formAddress || null,
         additionalInfo: formAdditionalInfo || null
       });
@@ -756,13 +789,17 @@ export default function StudentsSection() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <SuggestionInput
-                label="Grade Level"
+              <label className="block text-sm font-medium text-gray-700 mb-1">Grade Level</label>
+              <select
                 value={formGrade}
-                onChange={setFormGrade}
-                suggestions={availableGrades}
-                placeholder="Enter grade level (e.g., 1, 2, 3)"
-              />
+                onChange={(e) => setFormGrade(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select Grade Level</option>
+                {gradeLevelOptions.map((grade) => (
+                  <option key={grade} value={grade}>Grade {grade}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
@@ -900,13 +937,17 @@ export default function StudentsSection() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <SuggestionInput
-                label="Grade Level"
+              <label className="block text-sm font-medium text-gray-700 mb-1">Grade Level</label>
+              <select
                 value={formGrade}
-                onChange={setFormGrade}
-                suggestions={availableGrades}
-                placeholder="Enter grade level (e.g., 1, 2, 3)"
-              />
+                onChange={(e) => setFormGrade(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select Grade Level</option>
+                {gradeLevelOptions.map((grade) => (
+                  <option key={grade} value={grade}>Grade {grade}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
@@ -930,7 +971,28 @@ export default function StudentsSection() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nationality</label>
-              <input value={formNationality} onChange={(e) => setFormNationality(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus-border-transparent" />
+              <select
+                value={formNationality}
+                onChange={(e) => setFormNationality(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select Nationality</option>
+                {nationalityOptions.map((nationality) => (
+                  <option key={nationality} value={nationality}>{nationality}</option>
+                ))}
+              </select>
+              {formNationality === 'Other' && (
+                <div className="mt-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Please specify</label>
+                  <input
+                    type="text"
+                    value={customNationality}
+                    onChange={(e) => setCustomNationality(e.target.value)}
+                    placeholder="Enter nationality"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              )}
             </div>
           </div>
           <div>
