@@ -21,6 +21,7 @@ export default function SuggestionInput({
 }: SuggestionInputProps) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionRef = useRef<HTMLDivElement>(null);
 
@@ -32,9 +33,11 @@ export default function SuggestionInput({
       );
       setFilteredSuggestions(filtered);
       setShowSuggestions(filtered.length > 0 && value.length > 0);
+      setSelectedIndex(-1); // Reset selection when suggestions change
     } else {
       setFilteredSuggestions([]);
       setShowSuggestions(false);
+      setSelectedIndex(-1);
     }
   }, [value, suggestions]);
 
@@ -71,8 +74,34 @@ export default function SuggestionInput({
 
   // Handle key navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      setShowSuggestions(false);
+    if (!showSuggestions || filteredSuggestions.length === 0) {
+      if (e.key === 'Escape') {
+        setShowSuggestions(false);
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedIndex(prev => 
+          prev < filteredSuggestions.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedIndex(prev => prev > 0 ? prev - 1 : -1);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedIndex >= 0 && selectedIndex < filteredSuggestions.length) {
+          handleSuggestionClick(filteredSuggestions[selectedIndex]);
+        }
+        break;
+      case 'Escape':
+        setShowSuggestions(false);
+        setSelectedIndex(-1);
+        break;
     }
   };
 
@@ -104,7 +133,11 @@ export default function SuggestionInput({
           {filteredSuggestions.map((suggestion, index) => (
             <div
               key={index}
-              className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0"
+              className={`px-3 py-2 cursor-pointer text-sm border-b border-gray-100 last:border-b-0 ${
+                index === selectedIndex 
+                  ? 'bg-blue-50 border-blue-200' 
+                  : 'hover:bg-blue-50'
+              }`}
               onClick={() => handleSuggestionClick(suggestion)}
               onMouseDown={(e) => e.preventDefault()} // Prevent input blur
             >

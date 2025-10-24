@@ -30,6 +30,7 @@ export default function StudentSearchInput({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
@@ -75,6 +76,7 @@ export default function StudentSearchInput({
 
     setSuggestions(filtered.slice(0, 10)); // Limit to 10 suggestions
     setShowSuggestions(filtered.length > 0);
+    setSelectedIndex(-1); // Reset selection when suggestions change
   }, [value, allStudents, allowedStudentIds]);
 
   // Handle input change
@@ -116,8 +118,34 @@ export default function StudentSearchInput({
 
   // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      setShowSuggestions(false);
+    if (!showSuggestions || suggestions.length === 0) {
+      if (e.key === 'Escape') {
+        setShowSuggestions(false);
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedIndex(prev => 
+          prev < suggestions.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedIndex(prev => prev > 0 ? prev - 1 : -1);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
+          handleSuggestionClick(suggestions[selectedIndex]);
+        }
+        break;
+      case 'Escape':
+        setShowSuggestions(false);
+        setSelectedIndex(-1);
+        break;
     }
   };
 
@@ -142,11 +170,15 @@ export default function StudentSearchInput({
           ref={suggestionsRef}
           className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto"
         >
-          {suggestions.map((student) => (
+          {suggestions.map((student, index) => (
             <div
               key={student.id}
               onClick={() => handleSuggestionClick(student)}
-              className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+              className={`px-4 py-3 cursor-pointer border-b border-gray-100 last:border-b-0 ${
+                index === selectedIndex 
+                  ? 'bg-blue-50 border-blue-200' 
+                  : 'hover:bg-gray-50'
+              }`}
             >
               <div className="flex items-center space-x-3">
                 <div className="flex-shrink-0">
