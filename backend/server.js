@@ -94,7 +94,7 @@ app.use('/api/esp32', esp32Routes);
 console.log('ESP32 control API routes loaded');
 
 // Serve React build (dist) in production when available
-if ((process.env.NODE_ENV || 'development') === 'production') {
+if (process.env.NODE_ENV === 'production') {
   const clientDist = path.join(__dirname, '../dist');
   const indexHtml = path.join(clientDist, 'index.html');
   if (fs.existsSync(indexHtml)) {
