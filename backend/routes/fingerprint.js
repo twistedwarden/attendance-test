@@ -251,10 +251,24 @@ router.post('/verify-id', async (req, res) => {
         action: 'timeout'
       });
     } else {
+      // Get active school year ID
+      const [activeYear] = await pool.query(`
+        SELECT SchoolYearID FROM schoolyear WHERE IsActive = TRUE LIMIT 1
+      `);
+      
+      if (activeYear.length === 0) {
+        return res.status(500).json({
+          success: false,
+          message: 'No active school year found'
+        });
+      }
+      
+      const schoolYearId = activeYear[0].SchoolYearID;
+      
       // Create new attendance record
       await pool.query(
-        'INSERT INTO attendancelog (StudentID, Date, TimeIn, TimeOut, ValidatedBy) VALUES (?, ?, ?, ?, ?)',
-        [studentId, today, currentTime, null, 1] // Using admin user ID 1 as validator
+        'INSERT INTO attendancelog (StudentID, Date, TimeIn, TimeOut, ValidatedBy, SchoolYearID) VALUES (?, ?, ?, ?, ?, ?)',
+        [studentId, today, currentTime, null, 1, schoolYearId] // Using admin user ID 1 as validator
       );
       
       // Log successful operation
